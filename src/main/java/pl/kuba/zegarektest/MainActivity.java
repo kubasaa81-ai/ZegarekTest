@@ -188,6 +188,8 @@ public class MainActivity extends Activity implements BleService.Listener {
                 btn("Wyczyść log", Color.parseColor("#546E7A"), v -> clearLog())
         ));
 
+        root.addView(row(btn("🔍 Skanuj zegarek (ok. 1 min)", Color.parseColor("#D84315"), v -> scan())));
+
         scroll = new ScrollView(this);
         tvLog = new TextView(this);
         tvLog.setTypeface(Typeface.MONOSPACE);
@@ -308,6 +310,32 @@ public class MainActivity extends Activity implements BleService.Listener {
             for (int b : c) lbl.append(String.format(Locale.US, " %02X", b));
             tvSum.postDelayed(() -> quick(lbl.toString(), c), k * 6000L);
         }
+    }
+
+    private void scan() {
+        BleService s = BleService.instance;
+        if (s == null || chars.isEmpty()) { toast("Najpierw poczekaj na „Stan: Połączony”"); return; }
+        // tylko odczyty (XX 02) dla funkcji, które HBand odczytuje przy łączeniu
+        int[] ops = {0xF4, 0xA0, 0xA3, 0xE1, 0xAC, 0xAA, 0x91, 0x85, 0xB3, 0xB1, 0xC8, 0xB4,
+                0x50, 0xE0, 0xD3, 0x93, 0x89, 0x8A, 0xAD, 0xB8, 0xBD, 0xC7, 0xB9, 0xB6, 0xA7};
+        List<int[]> cmds = new ArrayList<>();
+        for (int op : ops) cmds.add(new int[]{op, 0x02});
+        // warianty „znajdź zegarek” (wibracja)
+        cmds.add(new int[]{0xB5, 0x01, 0x01});
+        cmds.add(new int[]{0xB5, 0x0A, 0x01});
+        cmds.add(new int[]{0xB5, 0x02});
+        cmds.add(new int[]{0xB5, 0x01, 0x00, 0x01});
+        toast("Skanuję " + cmds.size() + " komend – patrz też, kiedy zegarek zawibruje");
+        BleService.appendLog(this, "=== SKAN START ===");
+        for (int k = 0; k < cmds.size(); k++) {
+            final int[] c = cmds.get(k);
+            StringBuilder lbl = new StringBuilder("SKAN " + (k + 1) + ":");
+            for (int b : c) lbl.append(String.format(Locale.US, " %02X", b));
+            long delay = k * 1500L + (c[0] == 0xB5 ? (k - ops.length) * 4000L : 0);
+            tvLog.postDelayed(() -> quick(lbl.toString(), c), delay);
+        }
+        long end = cmds.size() * 1500L + 4 * 4000L + 2000;
+        tvLog.postDelayed(() -> { BleService.appendLog(this, "=== SKAN KONIEC ==="); toast("Skan zakończony – zapisz log"); }, end);
     }
 
     private void readAll() {
