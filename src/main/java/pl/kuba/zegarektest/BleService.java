@@ -54,7 +54,7 @@ public class BleService extends Service {
     public static volatile BleService instance;
     public static volatile Listener listener;
     public static volatile String state = "Zatrzymany";
-    public static volatile String sSteps = "–", sDist = "–", sKcal = "–", sHr = "–", sHist = "–";
+    public static volatile String sSteps = "–", sDist = "–", sKcal = "–", sHr = "–", sHist = "–", sBp = "–", sBat = "–";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private BluetoothGatt gatt;
@@ -175,6 +175,7 @@ public class BleService extends Service {
     }
 
     private void closeGatt() {
+        main.removeCallbacks(poll);
         queue.clear();
         busy = false;
         if (gatt != null) {
@@ -311,22 +312,25 @@ public class BleService extends Service {
             if (op == 0xD8 && v.length >= 14) {
                 long st = le32(v, 2), di = le32(v, 6), kc = le32(v, 10);
                 sSteps = String.valueOf(st);
-                sDist = di + " m";
-                sKcal = kc + " kcal";
+                sDist = String.format(Locale.US, "%.2f km", di / 1000.0);
+                sKcal = String.format(Locale.US, "%.0f kcal", kc / 10.0);
                 notifyUi();
-                return "dziś: " + st + " kroków, " + di + " m, " + kc + " kcal";
+                return "dziś: " + st + " kroków, " + sDist + ", " + sKcal;
             }
             if (op == 0xDF) return decodeHist(v);
-            if (op == 0xD0) {
-                for (int i = 1; i < Math.min(6, v.length); i++) {
-                    int x = u8(v, i);
-                    if (x >= 35 && x <= 220) {
-                        sHr = x + " (?)";
-                        notifyUi();
-                        return "pomiar na żywo – możliwe tętno " + x + " (bajt " + i + ")";
-                    }
+            if (op == 0xD0 && v.length >= 2) {
+                int x = u8(v, 1);
+                if (x >= 35 && x <= 220) {
+                    sHr = x + " (na żywo)";
+                    notifyUi();
+                    return "tętno na żywo: " + x;
                 }
-                return "pomiar na żywo – czekam na wynik";
+                return null;
+            }
+            if (op == 0x96 && v.length >= 3 && u8(v, 1) == 1) {
+                sBat = "poziom " + u8(v, 2) + " z 4";
+                notifyUi();
+                return "bateria zegarka: " + sBat;
             }
         } catch (Exception ignored) { }
         return null;
@@ -335,6 +339,7 @@ public class BleService extends Service {
     private String decodeHist(byte[] v) {
         if (v.length < 6 || u8(v, 3) != 1) return null;
         String when = null;
+        String bp = null;
         StringBuilder hr = new StringBuilder();
         int lastHr = 0;
         int i = 4;
@@ -343,6 +348,8 @@ public class BleService extends Service {
             if (tag < 0xB0 || tag > 0xCF || i + 2 + len > v.length) break;
             if (tag == 0xB1 && len >= 4) {
                 when = String.format(Locale.US, "%02d.%02d %02d:%02d", u8(v, i + 3), u8(v, i + 2), u8(v, i + 4), u8(v, i + 5));
+            } else if (tag == 0xB8 && len >= 2 && u8(v, i + 2) > 0) {
+                bp = u8(v, i + 2) + "/" + u8(v, i + 3);
             } else if (tag == 0xB4) {
                 for (int k = 0; k < len; k++) {
                     int x = u8(v, i + 2 + k);
@@ -354,8 +361,9 @@ public class BleService extends Service {
             i += 2 + len;
         }
         if (when == null) return null;
-        String out = when + "  tętno: " + (hr.length() == 0 ? "brak" : hr);
+        String out = when + "  tętno: " + (hr.length() == 0 ? "brak" : hr) + (bp != null ? "  ciśnienie: " + bp : "");
         sHist = out;
+        if (bp != null) sBp = bp + " (" + when + ")";
         if (lastHr > 0) sHr = lastHr + " (" + when + ")";
         notifyUi();
         return "historia " + out;
@@ -396,7 +404,25 @@ public class BleService extends Service {
         log(sb.toString());
         setState("Połączony");
         for (BluetoothGattCharacteristic c : notif) enqueue(() -> enableNotify(c));
+        main.postDelayed(() -> {
+            if (gatt != g) return;
+            log("Automatycznie: hasło 0000, dane dnia, bateria");
+            sendVeepoo(new byte[]{(byte) 0xA1, 0, 0, 0, 0});
+            sendVeepoo(new byte[]{(byte) 0xD8, 0});
+            sendVeepoo(new byte[]{(byte) 0x96, 1});
+        }, 1500);
+        main.removeCallbacks(poll);
+        main.postDelayed(poll, 5 * 60 * 1000);
     }
+
+    private final Runnable poll = new Runnable() {
+        @Override
+        public void run() {
+            if (gatt == null) return;
+            sendVeepoo(new byte[]{(byte) 0xD8, 0});
+            main.postDelayed(this, 5 * 60 * 1000);
+        }
+    };
 
     private void enableNotify(BluetoothGattCharacteristic c) {
         BluetoothGatt g = gatt;
