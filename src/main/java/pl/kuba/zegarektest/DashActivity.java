@@ -48,8 +48,13 @@ public class DashActivity extends Activity implements BleService.Listener {
 
     private static final String[] TITLES = {"Kroki", "Dystans", "Kalorie", "Tętno", "Ciśnienie",
             "Tlen (SpO2)", "Temperatura", "Glukoza (szac.)", "Oddech", "Bateria zegarka"};
-    private static final String[] COLORS = {"#1E88E5", "#3949AB", "#F4511E", "#D81B60", "#FB8C00",
-            "#5E35B1", "#E53935", "#C2185B", "#00897B", "#43A047"};
+    private static final String[] COLORS = {"#2F80ED", "#4F46E5", "#FF6B3D", "#FF3D77", "#FF9F1C",
+            "#7C3AED", "#F43F5E", "#E11D74", "#0EA5A4", "#22C55E"};
+    private static final String[] COLORS2 = {"#56CCF2", "#818CF8", "#FFA36C", "#FF8FB1", "#FFC857",
+            "#A78BFA", "#FB7185", "#F472B6", "#5EEAD4", "#86EFAC"};
+    private static final String[] ICONS = {"👣", "📍", "🔥", "❤️", "🩺", "🫁", "🌡️", "🩸", "🌬️", "🔋"};
+    private RingView ring;
+    private TextView tvRingSide;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -60,6 +65,18 @@ public class DashActivity extends Activity implements BleService.Listener {
 
     private int dp(int v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    private GradientDrawable grad(String c1, String c2, int radiusDp) {
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{Color.parseColor(c1), Color.parseColor(c2)});
+        g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
+    private static String darker(String hex) {
+        int c = Color.parseColor(hex);
+        return String.format("#%02X%02X%02X", (int) (Color.red(c) * 0.75), (int) (Color.green(c) * 0.75), (int) (Color.blue(c) * 0.75));
     }
 
     private GradientDrawable round(int color, int radiusDp) {
@@ -79,7 +96,9 @@ public class DashActivity extends Activity implements BleService.Listener {
         b.setMinHeight(dp(48));
         b.setMinimumHeight(dp(48));
         b.setPadding(dp(6), dp(6), dp(6), dp(6));
-        b.setBackground(round(Color.parseColor(color), 14));
+        b.setBackground(grad(color, darker(color), 24));
+        b.setElevation(dp(2));
+        b.setStateListAnimator(null);
         b.setOnClickListener(l);
         return b;
     }
@@ -99,14 +118,17 @@ public class DashActivity extends Activity implements BleService.Listener {
         LinearLayout t = new LinearLayout(this);
         t.setOrientation(LinearLayout.VERTICAL);
         t.setPadding(dp(12), dp(10), dp(12), dp(10));
-        t.setBackground(round(Color.parseColor(COLORS[i]), 18));
+        t.setBackground(grad(COLORS[i], COLORS2[i], 22));
+        t.setElevation(dp(3));
+        t.setMinimumHeight(dp(104));
         TextView title = new TextView(this);
-        title.setText(TITLES[i]);
+        title.setText(ICONS[i] + "  " + TITLES[i]);
         title.setTextColor(Color.parseColor("#E8FFFFFF"));
         title.setTextSize(13);
         TextView val = new TextView(this);
         val.setTextColor(Color.WHITE);
-        val.setTextSize(24);
+        val.setTextSize(26);
+        val.setPadding(0, dp(4), 0, 0);
         val.setTypeface(Typeface.DEFAULT_BOLD);
         val.setText("–");
         TextView sub = new TextView(this);
@@ -124,17 +146,20 @@ public class DashActivity extends Activity implements BleService.Listener {
     private TextView section(String s) {
         TextView t = new TextView(this);
         t.setText(s);
-        t.setTextSize(16);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
-        t.setTextColor(Color.parseColor("#263238"));
-        t.setPadding(dp(6), dp(14), 0, dp(4));
+        t.setTextSize(15);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        t.setTextColor(Color.parseColor("#3D4B63"));
+        t.setLetterSpacing(0.02f);
+        t.setPadding(dp(8), dp(18), 0, dp(6));
         return t;
     }
 
     private ChartView chart(LinearLayout root) {
         ChartView c = new ChartView(this);
-        c.setBackground(round(Color.WHITE, 14));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(170));
+        c.setBackground(round(Color.WHITE, 22));
+        c.setElevation(dp(2));
+        c.setPadding(dp(6), dp(8), dp(6), dp(6));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180));
         lp.setMargins(dp(4), 0, dp(4), dp(4));
         root.addView(c, lp);
         return c;
@@ -188,8 +213,9 @@ public class DashActivity extends Activity implements BleService.Listener {
         t.setTextSize(15);
         t.setTextColor(Color.parseColor("#263238"));
         t.setPadding(dp(14), dp(12), dp(14), dp(12));
-        t.setBackground(round(Color.WHITE, 14));
-        t.setLineSpacing(dp(2), 1f);
+        t.setBackground(round(Color.WHITE, 22));
+        t.setElevation(dp(2));
+        t.setLineSpacing(dp(3), 1f);
         return t;
     }
 
@@ -224,21 +250,35 @@ public class DashActivity extends Activity implements BleService.Listener {
     private void buildUi() {
         LinearLayout outer = new LinearLayout(this);
         outer.setOrientation(LinearLayout.VERTICAL);
-        outer.setBackgroundColor(Color.parseColor("#F1F5F9"));
+        outer.setBackgroundColor(Color.parseColor("#EEF2F8"));
+        getWindow().setStatusBarColor(Color.parseColor("#0B3D91"));
 
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.VERTICAL);
-        head.setPadding(dp(16), dp(30), dp(16), dp(4));
+        head.setPadding(dp(20), dp(34), dp(20), dp(16));
+        GradientDrawable hg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{Color.parseColor("#0B3D91"), Color.parseColor("#1565C0"), Color.parseColor("#00A3C4")});
+        hg.setCornerRadii(new float[]{0, 0, 0, 0, dp(28), dp(28), dp(28), dp(28)});
+        head.setBackground(hg);
+        head.setElevation(dp(4));
+        TextView hello = new TextView(this);
+        hello.setText("Witaj, Kuba 👋");
+        hello.setTextSize(14);
+        hello.setTextColor(Color.parseColor("#CFE8FF"));
+        head.addView(hello);
         TextView title = new TextView(this);
         title.setText("Mój zegarek JS300");
-        title.setTextSize(22);
+        title.setTextSize(24);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setTextColor(Color.parseColor("#0D47A1"));
+        title.setTextColor(Color.WHITE);
         head.addView(title);
         tvState = new TextView(this);
-        tvState.setTextSize(14);
+        tvState.setTextSize(13);
         tvState.setTypeface(Typeface.DEFAULT_BOLD);
-        head.addView(tvState);
+        tvState.setPadding(dp(12), dp(5), dp(12), dp(5));
+        LinearLayout.LayoutParams chip = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        chip.setMargins(0, dp(8), 0, 0);
+        head.addView(tvState, chip);
         outer.addView(head);
 
         sv = new ScrollView(this);
@@ -247,6 +287,21 @@ public class DashActivity extends Activity implements BleService.Listener {
         // ---- Pulpit ----
         LinearLayout p0 = page();
         p0.addView(dateRow(false));
+        LinearLayout ringCard = new LinearLayout(this);
+        ringCard.setGravity(Gravity.CENTER_VERTICAL);
+        ringCard.setPadding(dp(10), dp(10), dp(16), dp(10));
+        ringCard.setBackground(round(Color.WHITE, 26));
+        ringCard.setElevation(dp(3));
+        ring = new RingView(this);
+        ringCard.addView(ring, new LinearLayout.LayoutParams(dp(170), dp(170)));
+        tvRingSide = new TextView(this);
+        tvRingSide.setTextSize(15);
+        tvRingSide.setTextColor(Color.parseColor("#3D4B63"));
+        tvRingSide.setLineSpacing(dp(6), 1f);
+        LinearLayout.LayoutParams rs = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        rs.setMargins(dp(12), 0, 0, 0);
+        ringCard.addView(tvRingSide, rs);
+        addCard(p0, ringCard);
         for (int i = 0; i < 10; i += 2) p0.addView(row(tile(i), tile(i + 1)));
         p0.addView(section("Tętno w ciągu dnia"));
         chHr = chart(p0);
@@ -353,8 +408,12 @@ public class DashActivity extends Activity implements BleService.Listener {
 
         // ---- dolny pasek ----
         LinearLayout nav = new LinearLayout(this);
-        nav.setBackgroundColor(Color.WHITE);
-        nav.setPadding(dp(4), dp(4), dp(4), dp(8));
+        GradientDrawable ng = new GradientDrawable();
+        ng.setColor(Color.WHITE);
+        ng.setCornerRadii(new float[]{dp(24), dp(24), dp(24), dp(24), 0, 0, 0, 0});
+        nav.setBackground(ng);
+        nav.setElevation(dp(10));
+        nav.setPadding(dp(8), dp(8), dp(8), dp(10));
         String[] names = {"🏠\nPulpit", "👟\nSport", "⌚\nUrządzenie", "👤\nProfil"};
         for (int i = 0; i < 4; i++) {
             final int k = i;
@@ -362,6 +421,7 @@ public class DashActivity extends Activity implements BleService.Listener {
             b.setText(names[i]);
             b.setAllCaps(false);
             b.setTextSize(12);
+            b.setStateListAnimator(null);
             b.setPadding(0, dp(4), 0, dp(4));
             b.setOnClickListener(v -> showPage(k));
             navBtn[i] = b;
@@ -382,8 +442,8 @@ public class DashActivity extends Activity implements BleService.Listener {
         sv.scrollTo(0, 0);
         for (int k = 0; k < 4; k++) {
             boolean on = k == i;
-            navBtn[k].setBackground(round(Color.parseColor(on ? "#E3F2FD" : "#FFFFFF"), 14));
-            navBtn[k].setTextColor(Color.parseColor(on ? "#1565C0" : "#78909C"));
+            navBtn[k].setBackground(on ? grad("#DCEBFF", "#E9E3FF", 20) : round(Color.WHITE, 20));
+            navBtn[k].setTextColor(Color.parseColor(on ? "#1D4ED8" : "#8A97AB"));
             navBtn[k].setTypeface(on ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
         }
         if (tvState != null) refresh();
@@ -434,9 +494,11 @@ public class DashActivity extends Activity implements BleService.Listener {
 
     private void refresh() {
         String st = BleService.state;
-        tvState.setText(st);
-        tvState.setTextColor(Color.parseColor(st.startsWith("Połączony") ? "#2E7D32"
-                : (st.contains("Czekam") || st.startsWith("Rozłączony")) ? "#EF6C00" : "#C62828"));
+        boolean conn = st.startsWith("Połączony");
+        boolean wait = st.contains("Czekam") || st.startsWith("Rozłączony");
+        tvState.setText((conn ? "● " : wait ? "◌ " : "○ ") + st);
+        tvState.setTextColor(Color.WHITE);
+        tvState.setBackground(round(Color.parseColor(conn ? "#3322C55E" : wait ? "#33FF9F1C" : "#33F43F5E"), 20));
         String dTxt = (isToday() ? "Dziś, " : "") + new SimpleDateFormat("dd.MM.yyyy", Locale.US).format(day.getTime());
         tvDate.setText(dTxt);
         tvDate2.setText(dTxt);
@@ -487,6 +549,8 @@ public class DashActivity extends Activity implements BleService.Listener {
         int pct = 0;
         try { pct = (int) (Long.parseLong(steps) * 100 / Math.max(1, goal)); } catch (Exception ignored) { }
         set(0, steps, "cel " + goal + " (" + pct + "%)");
+        ring.set(pct / 100f, steps, "z " + goal + " kroków");
+        tvRingSide.setText("🎯  " + pct + "% celu\n📍  " + dist + "\n🔥  " + kcal + "\n❤️  " + (BleService.sHr.equals("–") ? "–" : strip(BleService.sHr)));
         set(1, dist, "");
         set(2, kcal, "");
 

@@ -34,12 +34,13 @@ public class ChartView extends View {
     public ChartView(Context c) {
         super(c);
         d = c.getResources().getDisplayMetrics().density;
-        grid.setColor(Color.parseColor("#DDE3EA"));
+        grid.setColor(Color.parseColor("#EDF1F7"));
         grid.setStrokeWidth(d);
-        text.setColor(Color.parseColor("#607D8B"));
+        text.setColor(Color.parseColor("#8A97AB"));
         text.setTextSize(11 * d);
         line.setStyle(Paint.Style.STROKE);
-        line.setStrokeWidth(2.2f * d);
+        line.setStrokeWidth(2.8f * d);
+        line.setStrokeCap(Paint.Cap.ROUND);
         line.setStrokeJoin(Paint.Join.ROUND);
         dot.setStyle(Paint.Style.FILL);
     }
