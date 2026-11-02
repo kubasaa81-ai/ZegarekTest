@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,7 +25,19 @@ jobs:
       - name: Budowanie APK
         run: gradle assembleDebug --no-daemon
 
+      - name: Nazwa pliku
+        run: cp build/outputs/apk/debug/*.apk ZegarekTest.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: ZegarekTest-apk
-          path: build/outputs/apk/debug/*.apk
+          path: ZegarekTest.apk
+
+      - name: Wydanie do pobrania
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: najnowsza
+          name: Zegarek Test – najnowsza wersja
+          prerelease: false
+          make_latest: true
+          files: ZegarekTest.apk
