@@ -57,6 +57,8 @@ public class BleService extends Service {
     public static volatile String sSteps = "–", sDist = "–", sKcal = "–", sHr = "–", sHist = "–", sBp = "–", sBat = "–",
             sSpo2 = "–", sTemp = "–", sGlu = "–", sResp = "–";
     public static volatile int screenSec = 0;
+    public static volatile int faceIdx = -1;
+    public static volatile String lastWrite = "";
 
     // ---------------- alarmy ----------------
     public static final String[][] TH = {
@@ -90,6 +92,7 @@ public class BleService extends Service {
         if (!force && last != null && now - last < 60 * 60 * 1000) return;
         lastAlarm.put(key, now);
         log("ALARM: " + msg);
+        if (gatt != null) sendVeepoo(new byte[]{(byte) 0xB5, 0x01});
         Intent open = new Intent(this, DashActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 1, open,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
@@ -422,10 +425,22 @@ public class BleService extends Service {
                 }
                 return null;
             }
-            if (op == 0xB4 && v.length >= 4 && u8(v, 1) == 1) {
+            if (op == 0xB4 && v.length >= 4) {
+                boolean ok = u8(v, 1) == 1;
                 screenSec = u8(v, 3);
+                if (u8(v, 2) == 1) lastWrite = ok ? "Zegarek przyjął: podświetlenie " + screenSec + " s" : "Zegarek odrzucił zmianę podświetlenia";
                 notifyUi();
-                return "czas podświetlenia: " + screenSec + " s";
+                return (ok ? "" : "ODRZUCONE – ") + "czas podświetlenia: " + screenSec + " s";
+            }
+            if (op == 0xC7 && v.length >= 4 && u8(v, 2) <= 2) {
+                boolean ok = u8(v, 1) == 1;
+                if (ok) faceIdx = u8(v, 3);
+                if (u8(v, 2) == 1) lastWrite = ok ? "Zegarek przyjął: tarcza " + (faceIdx + 1) : "Zegarek odrzucił zmianę tarczy";
+                notifyUi();
+                return "tarcza: " + (u8(v, 3) + 1) + (ok ? "" : " (odrzucone)");
+            }
+            if (op == 0xB5 && v.length >= 3) {
+                return "znajdź zegarek: " + hex(new byte[]{v[1], v[2]});
             }
             if (op == 0x96 && v.length >= 3 && u8(v, 1) == 1) {
                 sBat = "poziom " + u8(v, 2);
@@ -575,6 +590,8 @@ public class BleService extends Service {
             sendVeepoo(new byte[]{(byte) 0xD8, 0});
             sendVeepoo(new byte[]{(byte) 0x96, 1});
             sendVeepoo(new byte[]{(byte) 0xDF, 0});
+            sendVeepoo(new byte[]{(byte) 0xB4, 0x02});
+            sendVeepoo(new byte[]{(byte) 0xC7, 0x02});
         }, 1500);
         main.removeCallbacks(poll);
         main.postDelayed(poll, 5 * 60 * 1000);

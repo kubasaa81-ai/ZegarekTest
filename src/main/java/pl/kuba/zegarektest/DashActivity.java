@@ -147,6 +147,12 @@ public class DashActivity extends Activity implements BleService.Listener {
     private ChartView chSteps;
     private android.widget.EditText etGoalSteps, etGoalSleep;
     private int page = 0;
+    private TextView tvWrite;
+
+    private void setFace(int idx) {
+        send(0xC7, 0x01, idx);
+        toast("Zmieniam tarczę na " + (idx + 1));
+    }
 
     private LinearLayout page() {
         LinearLayout p = new LinearLayout(this);
@@ -282,6 +288,17 @@ public class DashActivity extends Activity implements BleService.Listener {
                 btn("+ 1 s", "#78909C", v -> changeScreen(1))
         ));
         p2.addView(row(btn("Zapisz w zegarku", "#6A1B9A", v -> saveScreen())));
+        p2.addView(section("Tarcza zegarka"));
+        p2.addView(row(
+                btn("1", "#3949AB", v -> setFace(0)),
+                btn("2", "#5E35B1", v -> setFace(1)),
+                btn("3", "#8E24AA", v -> setFace(2)),
+                btn("4", "#C2185B", v -> setFace(3))
+        ));
+        p2.addView(row(btn("📳 Znajdź zegarek (wibracja)", "#F4511E", v -> { send(0xB5, 0x01); toast("Zegarek powinien zawibrować"); })));
+        tvWrite = card("");
+        tvWrite.setTextSize(13);
+        addCard(p2, tvWrite);
         p2.addView(section("Połączenie"));
         p2.addView(row(
                 btn("Odśwież dane", "#00897B", v -> refreshWatch()),
@@ -488,6 +505,8 @@ public class DashActivity extends Activity implements BleService.Listener {
         set(8, lastResp != null ? lastResp : "–", lastResp != null ? "o " + tResp : "");
         set(9, today ? BleService.sBat : "–", today ? "skala zegarka" : "");
         if (screenWanted == 0 && BleService.screenSec > 0) screenWanted = BleService.screenSec;
+        tvWrite.setText((BleService.faceIdx >= 0 ? "Aktualna tarcza: " + (BleService.faceIdx + 1) + "\n" : "")
+                + (BleService.lastWrite.isEmpty() ? "Tu pojawi się potwierdzenie z zegarka." : BleService.lastWrite));
         tvScreen.setText("Podświetlenie:\n" + (screenWanted > 0 ? screenWanted + " s" : "–")
                 + (BleService.screenSec > 0 && BleService.screenSec != screenWanted ? "\n(w zegarku " + BleService.screenSec + " s)" : ""));
 
@@ -587,7 +606,7 @@ public class DashActivity extends Activity implements BleService.Listener {
 
     private void saveScreen() {
         if (screenWanted < 5) { toast("Najpierw wybierz czas"); return; }
-        send(0xB4, 0x01, 0x01, screenWanted, 0x05, 0x3C, 0x03);
+        send(0xB4, 0x01, screenWanted, 0x05, 0x3C, 0x03);
         toast("Wysłano: " + screenWanted + " s – sprawdź na zegarku");
     }
 
