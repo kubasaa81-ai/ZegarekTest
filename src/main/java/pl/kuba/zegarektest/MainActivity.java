@@ -115,7 +115,7 @@ public class MainActivity extends Activity implements BleService.Listener {
         root.setBackgroundColor(Color.WHITE);
 
         TextView title = new TextView(this);
-        title.setText("Zegarek Test 0.3 – JS300");
+        title.setText("Zegarek Test 0.4 – JS300");
         title.setTextSize(20);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.parseColor("#0D47A1"));
@@ -142,7 +142,7 @@ public class MainActivity extends Activity implements BleService.Listener {
         root.addView(row(
                 btn("Odśwież dane", Color.parseColor("#00897B"), v -> quick("Odśwież dane", 0xD8, 0x00)),
                 btn("Tętno start", Color.parseColor("#AD1457"), v -> quick("Tętno start", 0xD0, 0x01)),
-                btn("Tętno stop", Color.parseColor("#5D4037"), v -> quick("Tętno stop", 0xD0, 0x00))
+                btn("Tętno stop", Color.parseColor("#5D4037"), v -> { quick("Tętno stop", 0xD0, 0x00); tvSum.postDelayed(() -> quick("Tętno stop 2", 0xD0, 0x02), 800); })
         ));
         root.addView(row(
                 btn("Hasło 0000", Color.parseColor("#283593"), v -> quick("Hasło 0000", 0xA1, 0x00, 0x00, 0x00, 0x00)),
@@ -385,8 +385,12 @@ public class MainActivity extends Activity implements BleService.Listener {
         tvSum.setText("Kroki: " + BleService.sSteps
                 + "\nDystans: " + BleService.sDist + "    Kalorie: " + BleService.sKcal
                 + "\nTętno: " + BleService.sHr
-                + "\nCiśnienie: " + BleService.sBp + "    Bateria: " + BleService.sBat
-                + "\nOstatni wpis: " + BleService.sHist);
+                + "\nCiśnienie: " + BleService.sBp
+                + "\nTlen (SpO2): " + BleService.sSpo2
+                + "\nTemperatura: " + BleService.sTemp
+                + "\nGlukoza (szac.): " + BleService.sGlu
+                + "\nOddech: " + BleService.sResp
+                + "\nBateria: " + BleService.sBat + "    Ostatni wpis: " + BleService.sHist);
         if (st.startsWith("Połączony")) tvState.setTextColor(Color.parseColor("#2E7D32"));
         else if (st.contains("Czekam") || st.startsWith("Rozłączony")) tvState.setTextColor(Color.parseColor("#EF6C00"));
         else tvState.setTextColor(Color.parseColor("#C62828"));
