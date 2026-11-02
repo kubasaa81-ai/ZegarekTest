@@ -115,7 +115,7 @@ public class MainActivity extends Activity implements BleService.Listener {
         root.setBackgroundColor(Color.WHITE);
 
         TextView title = new TextView(this);
-        title.setText("Zegarek Test 0.5 – JS300");
+        title.setText("Zegarek Test 0.6 – JS300");
         title.setTextSize(20);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.parseColor("#0D47A1"));
@@ -147,7 +147,7 @@ public class MainActivity extends Activity implements BleService.Listener {
         root.addView(row(
                 btn("Hasło 0000", Color.parseColor("#283593"), v -> quick("Hasło 0000", 0xA1, 0x00, 0x00, 0x00, 0x00)),
                 btn("Bateria", Color.parseColor("#F9A825"), v -> quick("Bateria", 0x96, 0x01)),
-                btn("Historia (próby)", Color.parseColor("#7B1FA2"), v -> historyProbe())
+                btn("Pobierz historię", Color.parseColor("#7B1FA2"), v -> quick("Pobierz historię", 0xDF, 0x00))
         ));
 
         root.addView(row(

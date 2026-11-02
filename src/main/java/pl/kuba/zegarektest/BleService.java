@@ -443,20 +443,24 @@ public class BleService extends Service {
         for (BluetoothGattCharacteristic c : notif) enqueue(() -> enableNotify(c));
         main.postDelayed(() -> {
             if (gatt != g) return;
-            log("Automatycznie: hasło 0000, dane dnia, bateria");
+            log("Automatycznie: hasło 0000, dane dnia, bateria, historia dnia");
             sendVeepoo(new byte[]{(byte) 0xA1, 0, 0, 0, 0});
             sendVeepoo(new byte[]{(byte) 0xD8, 0});
             sendVeepoo(new byte[]{(byte) 0x96, 1});
+            sendVeepoo(new byte[]{(byte) 0xDF, 0});
         }, 1500);
         main.removeCallbacks(poll);
         main.postDelayed(poll, 5 * 60 * 1000);
     }
+
+    private int pollCount = 0;
 
     private final Runnable poll = new Runnable() {
         @Override
         public void run() {
             if (gatt == null) return;
             sendVeepoo(new byte[]{(byte) 0xD8, 0});
+            if (++pollCount % 3 == 0) sendVeepoo(new byte[]{(byte) 0xDF, 0});
             main.postDelayed(this, 5 * 60 * 1000);
         }
     };
