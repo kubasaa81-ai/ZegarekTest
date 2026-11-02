@@ -115,7 +115,7 @@ public class MainActivity extends Activity implements BleService.Listener {
         root.setBackgroundColor(Color.WHITE);
 
         TextView title = new TextView(this);
-        title.setText("Zegarek Test 0.4 – JS300");
+        title.setText("Zegarek Test 0.5 – JS300");
         title.setTextSize(20);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.parseColor("#0D47A1"));
@@ -147,7 +147,7 @@ public class MainActivity extends Activity implements BleService.Listener {
         root.addView(row(
                 btn("Hasło 0000", Color.parseColor("#283593"), v -> quick("Hasło 0000", 0xA1, 0x00, 0x00, 0x00, 0x00)),
                 btn("Bateria", Color.parseColor("#F9A825"), v -> quick("Bateria", 0x96, 0x01)),
-                btn("Próba 93", Color.parseColor("#7B1FA2"), v -> quick("Próba 93", 0x93, 0x01))
+                btn("Historia (próby)", Color.parseColor("#7B1FA2"), v -> historyProbe())
         ));
 
         root.addView(row(
@@ -289,6 +289,25 @@ public class MainActivity extends Activity implements BleService.Listener {
         for (int i = 0; i < bytes.length; i++) d[i] = (byte) bytes[i];
         BleService.appendLog(this, "=== TEST: " + label + " ===");
         if (!s.sendVeepoo(d)) toast("Brak kanału f0080003 – poczekaj na „Stan: Połączony”");
+    }
+
+    private void historyProbe() {
+        int[][] cmds = {
+                {0xD3, 0x01, 0x01},
+                {0xD3, 0x00},
+                {0xDF, 0x00},
+                {0xDF, 0x01},
+                {0xDF, 0x01, 0x00, 0x00, 0x01},
+                {0xD3, 0x01, 0x00}
+        };
+        toast("Wysyłam " + cmds.length + " prób co 6 s – nie ruszaj HBand");
+        for (int k = 0; k < cmds.length; k++) {
+            final int[] c = cmds[k];
+            final int n = k + 1;
+            StringBuilder lbl = new StringBuilder("Historia próba " + n + ":");
+            for (int b : c) lbl.append(String.format(Locale.US, " %02X", b));
+            tvSum.postDelayed(() -> quick(lbl.toString(), c), k * 6000L);
+        }
     }
 
     private void readAll() {

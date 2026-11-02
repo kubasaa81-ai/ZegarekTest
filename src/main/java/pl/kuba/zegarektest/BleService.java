@@ -330,7 +330,7 @@ public class BleService extends Service {
                 return null;
             }
             if (op == 0x96 && v.length >= 3 && u8(v, 1) == 1) {
-                sBat = "poziom " + u8(v, 2) + " z 4";
+                sBat = "poziom " + u8(v, 2);
                 notifyUi();
                 return "bateria zegarka: " + sBat;
             }
