@@ -42,6 +42,8 @@ public class DashActivity extends Activity implements BleService.Listener {
     private boolean hrRunning = false;
     private int screenWanted = 0;
     private TextView tvScreen;
+    private final android.widget.EditText[] thEdit = new android.widget.EditText[BleService.TH.length];
+    private Button btnAlarmOn;
     private final Runnable refresher = this::refresh;
 
     private static final String[] TITLES = {"Kroki", "Dystans", "Kalorie", "Tętno", "Ciśnienie",
@@ -203,6 +205,44 @@ public class DashActivity extends Activity implements BleService.Listener {
         ));
         root.addView(row(btn("Zapisz czas podświetlenia w zegarku", "#6A1B9A", v -> saveScreen())));
 
+        root.addView(section("Alarmy – kiedy mam dostać powiadomienie"));
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(12), dp(6), dp(12), dp(6));
+        box.setBackground(round(Color.WHITE, 14));
+        for (int i = 0; i < BleService.TH.length; i++) {
+            LinearLayout r = new LinearLayout(this);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            TextView l = new TextView(this);
+            l.setText(BleService.TH[i][1]);
+            l.setTextSize(15);
+            l.setTextColor(Color.parseColor("#263238"));
+            android.widget.EditText e = new android.widget.EditText(this);
+            e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            e.setTextSize(16);
+            e.setGravity(Gravity.CENTER);
+            e.setSingleLine(true);
+            float v = BleService.th(this, BleService.TH[i][0]);
+            e.setText(v == Math.round(v) ? String.valueOf(Math.round(v)) : String.valueOf(v));
+            thEdit[i] = e;
+            r.addView(l, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2.2f));
+            r.addView(e, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            box.addView(r);
+        }
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.setMargins(dp(4), 0, dp(4), dp(4));
+        root.addView(box, blp);
+        btnAlarmOn = btn("", "#2E7D32", v -> toggleAlarms());
+        root.addView(row(btnAlarmOn, btn("Zapisz progi", "#1565C0", v -> saveThresholds())));
+        root.addView(row(btn("Test alarmu", "#C62828", v -> testAlarm())));
+        TextView note = new TextView(this);
+        note.setText("Alarm przychodzi dla świeżego pomiaru (z ostatnich 30 min), najwyżej raz na godzinę dla danego parametru. Zegarek nie jest urządzeniem medycznym – przy złym samopoczuciu nie czekaj na alarm.");
+        note.setTextSize(12);
+        note.setTextColor(Color.parseColor("#607D8B"));
+        note.setPadding(dp(8), dp(4), dp(8), dp(8));
+        root.addView(note);
+        updateAlarmBtn();
+
         root.addView(row(
                 btn("Odśwież", "#00897B", v -> refreshWatch()),
                 btn("Bateria bez limitu", "#EF6C00", v -> askBattery())
@@ -352,6 +392,38 @@ public class DashActivity extends Activity implements BleService.Listener {
             toast("Pomiar tętna – wynik po ok. 20–30 s");
         }
         refresh();
+    }
+
+    private void updateAlarmBtn() {
+        boolean on = BleService.alarmsOn(this);
+        btnAlarmOn.setText(on ? "Alarmy: WŁĄCZONE" : "Alarmy: WYŁĄCZONE");
+        btnAlarmOn.setBackground(round(Color.parseColor(on ? "#2E7D32" : "#757575"), 14));
+    }
+
+    private void toggleAlarms() {
+        boolean on = !BleService.alarmsOn(this);
+        getSharedPreferences("alarmy", MODE_PRIVATE).edit().putBoolean("on", on).apply();
+        updateAlarmBtn();
+    }
+
+    private void saveThresholds() {
+        android.content.SharedPreferences.Editor ed = getSharedPreferences("alarmy", MODE_PRIVATE).edit();
+        for (int i = 0; i < BleService.TH.length; i++) {
+            try {
+                ed.putFloat(BleService.TH[i][0], Float.parseFloat(thEdit[i].getText().toString().replace(',', '.').trim()));
+            } catch (Exception e) {
+                toast("Zła liczba: " + BleService.TH[i][1]);
+                return;
+            }
+        }
+        ed.apply();
+        toast("Progi alarmów zapisane");
+    }
+
+    private void testAlarm() {
+        BleService s = BleService.instance;
+        if (s == null) { toast("Usługa zegarka nie działa – stuknij Połącz ponownie"); return; }
+        s.alarm("test", "To jest test alarmu – tak będzie wyglądać ostrzeżenie np. o wysokim ciśnieniu.", true);
     }
 
     private void changeScreen(int d) {

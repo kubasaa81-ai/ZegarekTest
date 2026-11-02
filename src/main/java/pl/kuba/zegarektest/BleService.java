@@ -57,6 +57,78 @@ public class BleService extends Service {
     public static volatile String sSteps = "–", sDist = "–", sKcal = "–", sHr = "–", sHist = "–", sBp = "–", sBat = "–",
             sSpo2 = "–", sTemp = "–", sGlu = "–", sResp = "–";
     public static volatile int screenSec = 0;
+
+    // ---------------- alarmy ----------------
+    public static final String[][] TH = {
+            {"hrHi", "Tętno – max", "120"},
+            {"hrLo", "Tętno – min", "45"},
+            {"sysHi", "Ciśnienie skurczowe – max", "140"},
+            {"diaHi", "Ciśnienie rozkurczowe – max", "90"},
+            {"sysLo", "Ciśnienie skurczowe – min", "90"},
+            {"spo2Lo", "Tlen – min (%)", "92"},
+            {"tempHi", "Temperatura – max (°C)", "37.5"},
+            {"gluHi", "Glukoza – max (mmol/L)", "10"},
+            {"gluLo", "Glukoza – min (mmol/L)", "3.5"}
+    };
+    private final java.util.HashMap<String, Long> lastAlarm = new java.util.HashMap<>();
+    private int liveHigh = 0, liveLow = 0;
+
+    public static float th(Context c, String key) {
+        for (String[] t : TH) if (t[0].equals(key))
+            return c.getSharedPreferences("alarmy", MODE_PRIVATE).getFloat(key, Float.parseFloat(t[2]));
+        return 0;
+    }
+
+    public static boolean alarmsOn(Context c) {
+        return c.getSharedPreferences("alarmy", MODE_PRIVATE).getBoolean("on", true);
+    }
+
+    public void alarm(String key, String msg, boolean force) {
+        if (!force && !alarmsOn(this)) return;
+        long now = System.currentTimeMillis();
+        Long last = lastAlarm.get(key);
+        if (!force && last != null && now - last < 60 * 60 * 1000) return;
+        lastAlarm.put(key, now);
+        log("ALARM: " + msg);
+        Intent open = new Intent(this, DashActivity.class);
+        PendingIntent pi = PendingIntent.getActivity(this, 1, open,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        Notification n = new Notification.Builder(this, "alarm")
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle("Uwaga – zegarek")
+                .setContentText(msg)
+                .setStyle(new Notification.BigTextStyle().bigText(msg))
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .build();
+        try {
+            getSystemService(NotificationManager.class).notify(100 + Math.abs(key.hashCode() % 50), n);
+        } catch (Exception ignored) { }
+    }
+
+    private boolean fresh(String dKey, String tKey) {
+        if (dKey == null || tKey == null || !today().equals(dKey)) return false;
+        try {
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            int nowM = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE);
+            int recM = Integer.parseInt(tKey.substring(0, 2)) * 60 + Integer.parseInt(tKey.substring(3, 5));
+            return nowM - recM >= 0 && nowM - recM <= 30;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void checkRecord(String tKey, int hr, int sys, int dia, int spo2, double glu) {
+        String at = " (o " + tKey + ")";
+        if (hr > 0 && hr > th(this, "hrHi")) alarm("hrHi", "Wysokie tętno: " + hr + " uderzeń/min" + at, false);
+        if (hr > 0 && hr < th(this, "hrLo")) alarm("hrLo", "Niskie tętno: " + hr + " uderzeń/min" + at, false);
+        if (sys > 0 && (sys >= th(this, "sysHi") || dia >= th(this, "diaHi")))
+            alarm("bpHi", "Wysokie ciśnienie: " + sys + "/" + dia + " mmHg" + at, false);
+        if (sys > 0 && sys < th(this, "sysLo")) alarm("bpLo", "Niskie ciśnienie: " + sys + "/" + dia + " mmHg" + at, false);
+        if (spo2 > 0 && spo2 < th(this, "spo2Lo")) alarm("spo2", "Niski poziom tlenu: " + spo2 + "%" + at, false);
+        if (glu > 0 && glu > th(this, "gluHi")) alarm("gluHi", String.format(Locale.US, "Wysoka glukoza (szac.): %.2f mmol/L", glu) + at, false);
+        if (glu > 0 && glu < th(this, "gluLo")) alarm("gluLo", String.format(Locale.US, "Niska glukoza (szac.): %.2f mmol/L", glu) + at, false);
+    }
     private final java.util.HashMap<Integer, String[]> histWhen = new java.util.HashMap<>();
 
     public static String today() {
@@ -104,6 +176,10 @@ public class BleService extends Service {
         instance = this;
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel(CH_ID, "Połączenie z zegarkiem", NotificationManager.IMPORTANCE_LOW));
+        NotificationChannel al = new NotificationChannel("alarm", "Alarmy zdrowia", NotificationManager.IMPORTANCE_HIGH);
+        al.enableVibration(true);
+        al.setVibrationPattern(new long[]{0, 400, 200, 400, 200, 400});
+        nm.createNotificationChannel(al);
         startFg();
         IntentFilter f = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         if (Build.VERSION.SDK_INT >= 33) {
@@ -336,6 +412,10 @@ public class BleService extends Service {
             if (op == 0xD0 && v.length >= 2) {
                 int x = u8(v, 1);
                 if (x >= 35 && x <= 220) {
+                    liveHigh = x > th(this, "hrHi") ? liveHigh + 1 : 0;
+                    liveLow = x < th(this, "hrLo") ? liveLow + 1 : 0;
+                    if (liveHigh >= 10) alarm("hrHi", "Wysokie tętno: " + x + " uderzeń/min (pomiar na żywo)", false);
+                    if (liveLow >= 10) alarm("hrLo", "Niskie tętno: " + x + " uderzeń/min (pomiar na żywo)", false);
                     sHr = x + " (na żywo)";
                     notifyUi();
                     return "tętno na żywo: " + x;
@@ -374,6 +454,8 @@ public class BleService extends Service {
                                 f.put("temp", body / 10.0);
                                 HistStore.putRecord(this, wk[0], wk[1], f);
                             } catch (Exception ignored) { }
+                            if (fresh(wk[0], wk[1]) && body / 10.0 >= th(this, "tempHi"))
+                                alarm("temp", String.format(Locale.US, "Wysoka temperatura: %.1f °C (o %s)", body / 10.0, wk[1]), false);
                         }
                         sTemp = String.format(Locale.US, "%.1f °C", body / 10.0) + (when != null ? " (" + when + ")" : "");
                         notifyUi();
@@ -435,6 +517,7 @@ public class BleService extends Service {
             if (respV > 0) f.put("resp", respV);
             if (f.length() > 0) HistStore.putRecord(this, dKey, tKey, f);
         } catch (Exception ignored) { }
+        if (fresh(dKey, tKey)) checkRecord(tKey, lastHr, sys, dia, spo2v, gluV);
         StringBuilder out = new StringBuilder(when).append("  tętno: ").append(hr.length() == 0 ? "brak" : hr);
         String tag = " (" + when + ")";
         if (bp != null) { out.append("  ciśnienie: ").append(bp); sBp = bp + tag; }
