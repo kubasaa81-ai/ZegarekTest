@@ -56,6 +56,7 @@ public class BleService extends Service {
     public static volatile String state = "Zatrzymany";
     public static volatile String sSteps = "–", sDist = "–", sKcal = "–", sHr = "–", sHist = "–", sBp = "–", sBat = "–",
             sSpo2 = "–", sTemp = "–", sGlu = "–", sResp = "–";
+    public static volatile int screenSec = 0;
     private final java.util.HashMap<Integer, String[]> histWhen = new java.util.HashMap<>();
 
     public static String today() {
@@ -340,6 +341,11 @@ public class BleService extends Service {
                     return "tętno na żywo: " + x;
                 }
                 return null;
+            }
+            if (op == 0xB4 && v.length >= 4 && u8(v, 1) == 1) {
+                screenSec = u8(v, 3);
+                notifyUi();
+                return "czas podświetlenia: " + screenSec + " s";
             }
             if (op == 0x96 && v.length >= 3 && u8(v, 1) == 1) {
                 sBat = "poziom " + u8(v, 2);

@@ -40,6 +40,8 @@ public class DashActivity extends Activity implements BleService.Listener {
     private ChartView chHr, chBp, chSpo2, chTemp;
     private final Calendar day = Calendar.getInstance();
     private boolean hrRunning = false;
+    private int screenWanted = 0;
+    private TextView tvScreen;
     private final Runnable refresher = this::refresh;
 
     private static final String[] TITLES = {"Kroki", "Dystans", "Kalorie", "Tętno", "Ciśnienie",
@@ -187,6 +189,20 @@ public class DashActivity extends Activity implements BleService.Listener {
         root.addView(section("Temperatura ciała"));
         chTemp = chart(root);
 
+        root.addView(section("Ustawienia zegarka"));
+        tvScreen = new TextView(this);
+        tvScreen.setTextSize(16);
+        tvScreen.setGravity(Gravity.CENTER);
+        tvScreen.setTextColor(Color.parseColor("#263238"));
+        tvScreen.setPadding(0, dp(10), 0, dp(10));
+        tvScreen.setBackground(round(Color.WHITE, 14));
+        root.addView(row(
+                btn("− 1 s", "#78909C", v -> changeScreen(-1)),
+                tvScreen,
+                btn("+ 1 s", "#78909C", v -> changeScreen(1))
+        ));
+        root.addView(row(btn("Zapisz czas podświetlenia w zegarku", "#6A1B9A", v -> saveScreen())));
+
         root.addView(row(
                 btn("Odśwież", "#00897B", v -> refreshWatch()),
                 btn("Bateria bez limitu", "#EF6C00", v -> askBattery())
@@ -294,6 +310,9 @@ public class DashActivity extends Activity implements BleService.Listener {
         set(7, lastGlu != null ? lastGlu : "–", lastGlu != null ? "mmol/L o " + tGlu + " – orientacyjnie" : "");
         set(8, lastResp != null ? lastResp : "–", lastResp != null ? "o " + tResp : "");
         set(9, today ? BleService.sBat : "–", today ? "skala zegarka" : "");
+        if (screenWanted == 0 && BleService.screenSec > 0) screenWanted = BleService.screenSec;
+        tvScreen.setText("Podświetlenie:\n" + (screenWanted > 0 ? screenWanted + " s" : "–")
+                + (BleService.screenSec > 0 && BleService.screenSec != screenWanted ? "\n(w zegarku " + BleService.screenSec + " s)" : ""));
 
         List<ChartView.Series> l1 = new ArrayList<>();
         l1.add(ChartView.series(hr, Color.parseColor("#D81B60")));
@@ -333,6 +352,18 @@ public class DashActivity extends Activity implements BleService.Listener {
             toast("Pomiar tętna – wynik po ok. 20–30 s");
         }
         refresh();
+    }
+
+    private void changeScreen(int d) {
+        if (screenWanted == 0) screenWanted = BleService.screenSec > 0 ? BleService.screenSec : 10;
+        screenWanted = Math.max(5, Math.min(60, screenWanted + d));
+        refresh();
+    }
+
+    private void saveScreen() {
+        if (screenWanted < 5) { toast("Najpierw wybierz czas"); return; }
+        send(0xB4, 0x01, 0x01, screenWanted, 0x05, 0x3C, 0x03);
+        toast("Wysłano: " + screenWanted + " s – sprawdź na zegarku");
     }
 
     private void refreshWatch() {
