@@ -92,7 +92,7 @@ public class BleService extends Service {
         if (!force && last != null && now - last < 60 * 60 * 1000) return;
         lastAlarm.put(key, now);
         log("ALARM: " + msg);
-        if (gatt != null) sendVeepoo(new byte[]{(byte) 0xB5, 0x01});
+        if (gatt != null) sendVeepoo(new byte[]{(byte) 0xB5, 0x0A, 0x01});
         Intent open = new Intent(this, DashActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 1, open,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
@@ -432,10 +432,10 @@ public class BleService extends Service {
                 notifyUi();
                 return (ok ? "" : "ODRZUCONE – ") + "czas podświetlenia: " + screenSec + " s";
             }
-            if (op == 0xC7 && v.length >= 4 && u8(v, 2) <= 2) {
-                boolean ok = u8(v, 1) == 1;
+            if (op == 0xC7 && v.length >= 4 && u8(v, 1) <= 2) {
+                boolean ok = u8(v, 2) == 1;
                 if (ok) faceIdx = u8(v, 3);
-                if (u8(v, 2) == 1) lastWrite = ok ? "Zegarek przyjął: tarcza " + (faceIdx + 1) : "Zegarek odrzucił zmianę tarczy";
+                if (u8(v, 1) == 1) lastWrite = ok ? "Zegarek przyjął: tarcza " + (faceIdx + 1) : "Zegarek odrzucił zmianę tarczy";
                 notifyUi();
                 return "tarcza: " + (u8(v, 3) + 1) + (ok ? "" : " (odrzucone)");
             }

@@ -350,7 +350,7 @@ public class DashActivity extends Activity implements BleService.Listener {
                 btn("3", "#8E24AA", v -> setFace(2)),
                 btn("4", "#C2185B", v -> setFace(3))
         ));
-        p2.addView(row(btn("📳 Znajdź zegarek (wibracja)", "#F4511E", v -> { send(0xB5, 0x01); toast("Zegarek powinien zawibrować"); })));
+        p2.addView(row(btn("📳 Znajdź zegarek (wibracja)", "#F4511E", v -> { send(0xB5, 0x0A, 0x01); toast("Zegarek powinien zawibrować"); })));
         tvWrite = card("");
         tvWrite.setTextSize(13);
         addCard(p2, tvWrite);
