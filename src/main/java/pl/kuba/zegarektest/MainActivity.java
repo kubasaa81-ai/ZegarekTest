@@ -38,7 +38,7 @@ import java.util.Locale;
 
 public class MainActivity extends Activity implements BleService.Listener {
 
-    private TextView tvState, tvLog;
+    private TextView tvState, tvLog, tvSum;
     private ScrollView scroll;
     private EditText etAddr, etHex, etNote;
     private Spinner spChar;
@@ -115,7 +115,7 @@ public class MainActivity extends Activity implements BleService.Listener {
         root.setBackgroundColor(Color.WHITE);
 
         TextView title = new TextView(this);
-        title.setText("Zegarek Test – JS300");
+        title.setText("Zegarek Test 0.2 – JS300");
         title.setTextSize(20);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.parseColor("#0D47A1"));
@@ -126,6 +126,29 @@ public class MainActivity extends Activity implements BleService.Listener {
         tvState.setTypeface(Typeface.DEFAULT_BOLD);
         tvState.setPadding(0, dp(4), 0, dp(4));
         root.addView(tvState);
+
+        tvSum = new TextView(this);
+        tvSum.setTextSize(15);
+        tvSum.setTextColor(Color.parseColor("#0D47A1"));
+        tvSum.setPadding(dp(10), dp(8), dp(10), dp(8));
+        GradientDrawable sumBg = new GradientDrawable();
+        sumBg.setColor(Color.parseColor("#E3F2FD"));
+        sumBg.setCornerRadius(dp(12));
+        tvSum.setBackground(sumBg);
+        LinearLayout.LayoutParams sumLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sumLp.setMargins(dp(3), dp(2), dp(3), dp(4));
+        root.addView(tvSum, sumLp);
+
+        root.addView(row(
+                btn("Kroki dziś", Color.parseColor("#00897B"), v -> quick("Kroki dziś", 0xD8, 0x00)),
+                btn("Tętno start", Color.parseColor("#AD1457"), v -> quick("Tętno start", 0xD0, 0x01)),
+                btn("Tętno stop", Color.parseColor("#5D4037"), v -> quick("Tętno stop", 0xD0, 0x00))
+        ));
+        root.addView(row(
+                btn("Hasło 0000", Color.parseColor("#283593"), v -> quick("Hasło 0000", 0xA1, 0x00, 0x00, 0x00, 0x00)),
+                btn("Próba 96", Color.parseColor("#F9A825"), v -> quick("Próba 96", 0x96, 0x01)),
+                btn("Próba 93", Color.parseColor("#7B1FA2"), v -> quick("Próba 93", 0x93, 0x01))
+        ));
 
         root.addView(row(
                 btn("Połącz", Color.parseColor("#2E7D32"), v -> startBle()),
@@ -259,6 +282,15 @@ public class MainActivity extends Activity implements BleService.Listener {
         s.write(chars.get(idx), data);
     }
 
+    private void quick(String label, int... bytes) {
+        BleService s = BleService.instance;
+        if (s == null) { toast("Najpierw połącz z zegarkiem"); return; }
+        byte[] d = new byte[bytes.length];
+        for (int i = 0; i < bytes.length; i++) d[i] = (byte) bytes[i];
+        BleService.appendLog(this, "=== TEST: " + label + " ===");
+        if (!s.sendVeepoo(d)) toast("Brak kanału f0080003 – poczekaj na „Stan: Połączony”");
+    }
+
     private void readAll() {
         BleService s = BleService.instance;
         if (s == null) { toast("Najpierw połącz z zegarkiem"); return; }
@@ -350,6 +382,10 @@ public class MainActivity extends Activity implements BleService.Listener {
     public void onStateChanged() {
         String st = BleService.state;
         tvState.setText("Stan: " + st);
+        tvSum.setText("Kroki: " + BleService.sSteps
+                + "\nDystans: " + BleService.sDist + "    Kalorie: " + BleService.sKcal
+                + "\nTętno: " + BleService.sHr
+                + "\nOstatni wpis: " + BleService.sHist);
         if (st.startsWith("Połączony")) tvState.setTextColor(Color.parseColor("#2E7D32"));
         else if (st.contains("Czekam") || st.startsWith("Rozłączony")) tvState.setTextColor(Color.parseColor("#EF6C00"));
         else tvState.setTextColor(Color.parseColor("#C62828"));

@@ -54,6 +54,7 @@ public class BleService extends Service {
     public static volatile BleService instance;
     public static volatile Listener listener;
     public static volatile String state = "Zatrzymany";
+    public static volatile String sSteps = "–", sDist = "–", sKcal = "–", sHr = "–", sHist = "–";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private BluetoothGatt gatt;
@@ -61,6 +62,8 @@ public class BleService extends Service {
     private final ArrayDeque<Runnable> queue = new ArrayDeque<>();
     private boolean busy = false;
     private int opId = 0;
+    private boolean discoverStarted = false;
+    private String lastFea1 = "";
     public final List<BluetoothGattCharacteristic> writable = new ArrayList<>();
     private final List<BluetoothGattCharacteristic> readable = new ArrayList<>();
 
@@ -193,13 +196,27 @@ public class BleService extends Service {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     log("POŁĄCZONO (status " + status + ")");
                     setState("Połączony – odczyt usług…");
-                    main.postDelayed(() -> { if (gatt == g) g.discoverServices(); }, 600);
+                    discoverStarted = false;
+                    main.postDelayed(() -> {
+                        if (gatt != g) return;
+                        if (!g.requestMtu(247)) startDiscover(g);
+                    }, 600);
+                    main.postDelayed(() -> { if (gatt == g) startDiscover(g); }, 4000);
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     log("ROZŁĄCZONO (status " + status + ")");
                     closeGatt();
                     setState("Rozłączony – czekam na zegarek…");
                     if (wantConnected) main.postDelayed(BleService.this::connect, 2000);
                 }
+            });
+        }
+
+        @Override
+        public void onMtuChanged(BluetoothGatt g, int mtu, int status) {
+            main.post(() -> {
+                if (g != gatt) return;
+                log("MTU " + mtu + " (status " + status + ")");
+                startDiscover(g);
             });
         }
 
@@ -216,7 +233,7 @@ public class BleService extends Service {
             byte[] v = ch.getValue();
             final byte[] val = v == null ? new byte[0] : v.clone();
             final String u = shortUuid(ch.getUuid());
-            main.post(() -> log("← " + u + "  " + hex(val) + ascii(val)));
+            main.post(() -> handleNotify(u, val));
         }
 
         @Override
@@ -248,6 +265,114 @@ public class BleService extends Service {
             });
         }
     };
+
+    private void startDiscover(BluetoothGatt g) {
+        if (discoverStarted) return;
+        discoverStarted = true;
+        g.discoverServices();
+    }
+
+    // ---------------- dekodowanie danych z zegarka ----------------
+
+    private void handleNotify(String u, byte[] v) {
+        String h = hex(v);
+        if (u.equals("FEA1")) {
+            if (h.equals(lastFea1)) { decode(u, v); return; }
+            lastFea1 = h;
+        }
+        log("← " + u + "  " + h + ascii(v));
+        String d = decode(u, v);
+        if (d != null) log("   ⇒ " + d);
+    }
+
+    private static int u8(byte[] v, int i) { return v[i] & 0xFF; }
+
+    private static long le32(byte[] v, int i) {
+        return (long) u8(v, i) | ((long) u8(v, i + 1) << 8) | ((long) u8(v, i + 2) << 16) | ((long) u8(v, i + 3) << 24);
+    }
+
+    private void notifyUi() {
+        Listener l = listener;
+        if (l != null) main.post(l::onStateChanged);
+    }
+
+    private String decode(String u, byte[] v) {
+        try {
+            if (u.equals("FEA1") || u.equals("FEA2")) {
+                if (v.length >= 4 && (v[0] & 1) != 0) {
+                    int st = u8(v, 1) | (u8(v, 2) << 8) | (u8(v, 3) << 16);
+                    if (u.equals("FEA1") && !String.valueOf(st).equals(sSteps)) { sSteps = String.valueOf(st); notifyUi(); }
+                    return "kroki: " + st;
+                }
+                return null;
+            }
+            if (!u.equals("f0080002") || v.length == 0) return null;
+            int op = u8(v, 0);
+            if (op == 0xD8 && v.length >= 14) {
+                long st = le32(v, 2), di = le32(v, 6), kc = le32(v, 10);
+                sSteps = String.valueOf(st);
+                sDist = di + " m";
+                sKcal = kc + " kcal";
+                notifyUi();
+                return "dziś: " + st + " kroków, " + di + " m, " + kc + " kcal";
+            }
+            if (op == 0xDF) return decodeHist(v);
+            if (op == 0xD0) {
+                for (int i = 1; i < Math.min(6, v.length); i++) {
+                    int x = u8(v, i);
+                    if (x >= 35 && x <= 220) {
+                        sHr = x + " (?)";
+                        notifyUi();
+                        return "pomiar na żywo – możliwe tętno " + x + " (bajt " + i + ")";
+                    }
+                }
+                return "pomiar na żywo – czekam na wynik";
+            }
+        } catch (Exception ignored) { }
+        return null;
+    }
+
+    private String decodeHist(byte[] v) {
+        if (v.length < 6 || u8(v, 3) != 1) return null;
+        String when = null;
+        StringBuilder hr = new StringBuilder();
+        int lastHr = 0;
+        int i = 4;
+        while (i + 1 < v.length) {
+            int tag = u8(v, i), len = u8(v, i + 1);
+            if (tag < 0xB0 || tag > 0xCF || i + 2 + len > v.length) break;
+            if (tag == 0xB1 && len >= 4) {
+                when = String.format(Locale.US, "%02d.%02d %02d:%02d", u8(v, i + 3), u8(v, i + 2), u8(v, i + 4), u8(v, i + 5));
+            } else if (tag == 0xB4) {
+                for (int k = 0; k < len; k++) {
+                    int x = u8(v, i + 2 + k);
+                    if (hr.length() > 0) hr.append(",");
+                    hr.append(x);
+                    if (x > 0) lastHr = x;
+                }
+            }
+            i += 2 + len;
+        }
+        if (when == null) return null;
+        String out = when + "  tętno: " + (hr.length() == 0 ? "brak" : hr);
+        sHist = out;
+        if (lastHr > 0) sHr = lastHr + " (" + when + ")";
+        notifyUi();
+        return "historia " + out;
+    }
+
+    /** Wysyła komendę do głównego kanału Veepoo (f0080003), dopełnioną zerami do 20 bajtów. */
+    public boolean sendVeepoo(byte[] d) {
+        BluetoothGattCharacteristic target = null;
+        for (BluetoothGattCharacteristic c : writable) {
+            if (c.getUuid().toString().startsWith("f0080003")) { target = c; break; }
+        }
+        if (target == null) return false;
+        byte[] p = new byte[Math.max(20, d.length)];
+        System.arraycopy(d, 0, p, 0, d.length);
+        write(target, p);
+        return true;
+    }
 
     private void handleServices(BluetoothGatt g, int status) {
         if (status != BluetoothGatt.GATT_SUCCESS) {
