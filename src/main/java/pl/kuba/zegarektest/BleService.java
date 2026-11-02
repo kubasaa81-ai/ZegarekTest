@@ -56,7 +56,18 @@ public class BleService extends Service {
     public static volatile String state = "Zatrzymany";
     public static volatile String sSteps = "–", sDist = "–", sKcal = "–", sHr = "–", sHist = "–", sBp = "–", sBat = "–",
             sSpo2 = "–", sTemp = "–", sGlu = "–", sResp = "–";
-    private final java.util.HashMap<Integer, String> histWhen = new java.util.HashMap<>();
+    private final java.util.HashMap<Integer, String[]> histWhen = new java.util.HashMap<>();
+
+    public static String today() {
+        return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+    }
+
+    private static String dayKey(int month, int day) {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        int year = cal.get(java.util.Calendar.YEAR);
+        if (month > cal.get(java.util.Calendar.MONTH) + 2) year--;
+        return String.format(Locale.US, "%04d-%02d-%02d", year, month, day);
+    }
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private BluetoothGatt gatt;
@@ -102,7 +113,7 @@ public class BleService extends Service {
     }
 
     private Notification buildNotif() {
-        Intent open = new Intent(this, MainActivity.class);
+        Intent open = new Intent(this, DashActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, open,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return new Notification.Builder(this, CH_ID)
@@ -316,6 +327,7 @@ public class BleService extends Service {
                 sSteps = String.valueOf(st);
                 sDist = String.format(Locale.US, "%.2f km", di / 1000.0);
                 sKcal = (kc / 10) + " kcal";
+                HistStore.putDay(this, today(), st, di, kc / 10);
                 notifyUi();
                 return "dziś: " + st + " kroków, " + sDist + ", " + sKcal;
             }
@@ -344,11 +356,19 @@ public class BleService extends Service {
         int part = u8(v, 3);
         if (part == 2) {
             // druga część wpisu: temperatura (C3 04: skóra, ciało w 0,1 °C)
-            String when = histWhen.get(cnt);
+            String[] wk = histWhen.get(cnt);
+            String when = wk == null ? null : wk[2];
             for (int i = 4; i + 5 < v.length; i++) {
                 if (u8(v, i) == 0xC3 && u8(v, i + 1) == 4) {
                     int body = u8(v, i + 4) | (u8(v, i + 5) << 8);
                     if (body > 200 && body < 450) {
+                        if (wk != null) {
+                            try {
+                                org.json.JSONObject f = new org.json.JSONObject();
+                                f.put("temp", body / 10.0);
+                                HistStore.putRecord(this, wk[0], wk[1], f);
+                            } catch (Exception ignored) { }
+                        }
                         sTemp = String.format(Locale.US, "%.1f °C", body / 10.0) + (when != null ? " (" + when + ")" : "");
                         notifyUi();
                         return "temperatura ciała " + (body / 10.0) + " °C" + (when != null ? " – " + when : "");
@@ -360,8 +380,10 @@ public class BleService extends Service {
         }
         if (part != 1) return null;
         String when = null, bp = null, spo2 = null, glu = null, resp = null;
+        String dKey = null, tKey = null;
         StringBuilder hr = new StringBuilder();
-        int lastHr = 0;
+        int lastHr = 0, hrSum = 0, hrN = 0, sys = 0, dia = 0, spo2v = 0, respV = 0;
+        double gluV = 0;
         int i = 4;
         while (i + 1 < v.length) {
             int tag = u8(v, i), len = u8(v, i + 1);
@@ -369,31 +391,44 @@ public class BleService extends Service {
             int d = i + 2;
             if (tag == 0xB1 && len >= 4) {
                 when = String.format(Locale.US, "%02d.%02d %02d:%02d", u8(v, d + 1), u8(v, d), u8(v, d + 2), u8(v, d + 3));
+                dKey = dayKey(u8(v, d), u8(v, d + 1));
+                tKey = String.format(Locale.US, "%02d:%02d", u8(v, d + 2), u8(v, d + 3));
             } else if (tag == 0xB4) {
                 for (int k = 0; k < len; k++) {
                     int x = u8(v, d + k);
                     if (hr.length() > 0) hr.append(",");
                     hr.append(x);
-                    if (x > 0 && x < 255) lastHr = x;
+                    if (x > 0 && x < 255) { lastHr = x; hrSum += x; hrN++; }
                 }
             } else if (tag == 0xB8 && len >= 2 && u8(v, d) > 0) {
                 bp = u8(v, d) + "/" + u8(v, d + 1);
+                sys = u8(v, d);
+                dia = u8(v, d + 1);
             } else if (tag == 0xB9 && len >= 5) {
                 int last = 0;
                 for (int k = 0; k < 5; k++) { int x = u8(v, d + k); if (x >= 70 && x <= 100) last = x; }
-                if (last > 0) spo2 = last + "%";
+                if (last > 0) { spo2 = last + "%"; spo2v = last; }
             } else if (tag == 0xBE && len >= 2) {
                 int g = u8(v, d) | (u8(v, d + 1) << 8);
-                if (g > 0 && g < 3000) glu = String.format(Locale.US, "%.2f mmol/L", g / 100.0);
+                if (g > 0 && g < 3000) { glu = String.format(Locale.US, "%.2f mmol/L", g / 100.0); gluV = g / 100.0; }
             } else if (tag == 0xB6 && len >= 1) {
                 int last = 0;
                 for (int k = 0; k < len; k++) { int x = u8(v, d + k); if (x > 0 && x < 60) last = x; }
-                if (last > 0) resp = last + "/min";
+                if (last > 0) { resp = last + "/min"; respV = last; }
             }
             i += 2 + len;
         }
         if (when == null) return null;
-        histWhen.put(cnt, when);
+        histWhen.put(cnt, new String[]{dKey, tKey, when});
+        try {
+            org.json.JSONObject f = new org.json.JSONObject();
+            if (hrN > 0) f.put("hr", Math.round(hrSum / (float) hrN));
+            if (sys > 0) { f.put("sys", sys); f.put("dia", dia); }
+            if (spo2v > 0) f.put("spo2", spo2v);
+            if (gluV > 0) f.put("glu", gluV);
+            if (respV > 0) f.put("resp", respV);
+            if (f.length() > 0) HistStore.putRecord(this, dKey, tKey, f);
+        } catch (Exception ignored) { }
         StringBuilder out = new StringBuilder(when).append("  tętno: ").append(hr.length() == 0 ? "brak" : hr);
         String tag = " (" + when + ")";
         if (bp != null) { out.append("  ciśnienie: ").append(bp); sBp = bp + tag; }

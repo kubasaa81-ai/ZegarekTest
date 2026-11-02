@@ -115,7 +115,7 @@ public class MainActivity extends Activity implements BleService.Listener {
         root.setBackgroundColor(Color.WHITE);
 
         TextView title = new TextView(this);
-        title.setText("Zegarek Test 0.6 – JS300");
+        title.setText("Tryb testowy – JS300");
         title.setTextSize(20);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.parseColor("#0D47A1"));
@@ -386,7 +386,7 @@ public class MainActivity extends Activity implements BleService.Listener {
 
     @Override
     protected void onPause() {
-        BleService.listener = null;
+        if (BleService.listener == this) BleService.listener = null;
         super.onPause();
     }
 
