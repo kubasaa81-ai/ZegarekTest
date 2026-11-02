@@ -140,119 +140,248 @@ public class DashActivity extends Activity implements BleService.Listener {
         return c;
     }
 
-    private void buildUi() {
-        ScrollView sv = new ScrollView(this);
-        sv.setBackgroundColor(Color.parseColor("#F1F5F9"));
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(10), dp(30), dp(10), dp(20));
-        sv.addView(root);
+    private final LinearLayout[] pages = new LinearLayout[4];
+    private final Button[] navBtn = new Button[4];
+    private ScrollView sv;
+    private TextView tvDate2, tvSportSum, tvSportList;
+    private ChartView chSteps;
+    private android.widget.EditText etGoalSteps, etGoalSleep;
+    private int page = 0;
 
-        TextView title = new TextView(this);
-        title.setText("Mój zegarek JS300");
-        title.setTextSize(24);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setTextColor(Color.parseColor("#0D47A1"));
-        title.setPadding(dp(6), 0, 0, 0);
-        root.addView(title);
+    private LinearLayout page() {
+        LinearLayout p = new LinearLayout(this);
+        p.setOrientation(LinearLayout.VERTICAL);
+        p.setPadding(dp(10), dp(4), dp(10), dp(20));
+        return p;
+    }
 
-        tvState = new TextView(this);
-        tvState.setTextSize(15);
-        tvState.setTypeface(Typeface.DEFAULT_BOLD);
-        tvState.setPadding(dp(6), dp(2), 0, dp(6));
-        root.addView(tvState);
-
+    private LinearLayout dateRow(boolean second) {
         Button prev = btn("‹", "#546E7A", v -> shiftDay(-1));
         Button next = btn("›", "#546E7A", v -> shiftDay(1));
-        tvDate = new TextView(this);
-        tvDate.setTextSize(18);
-        tvDate.setTypeface(Typeface.DEFAULT_BOLD);
-        tvDate.setGravity(Gravity.CENTER);
-        tvDate.setTextColor(Color.parseColor("#263238"));
-        LinearLayout dateRow = new LinearLayout(this);
-        dateRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams lpb = new LinearLayout.LayoutParams(dp(64), ViewGroup.LayoutParams.WRAP_CONTENT);
-        lpb.setMargins(dp(4), dp(4), dp(4), dp(4));
-        dateRow.addView(prev, lpb);
-        dateRow.addView(tvDate, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        LinearLayout.LayoutParams lpb2 = new LinearLayout.LayoutParams(dp(64), ViewGroup.LayoutParams.WRAP_CONTENT);
-        lpb2.setMargins(dp(4), dp(4), dp(4), dp(4));
-        dateRow.addView(next, lpb2);
-        root.addView(dateRow);
+        TextView t = new TextView(this);
+        t.setTextSize(18);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setGravity(Gravity.CENTER);
+        t.setTextColor(Color.parseColor("#263238"));
+        if (second) tvDate2 = t; else tvDate = t;
+        LinearLayout r = new LinearLayout(this);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(dp(64), ViewGroup.LayoutParams.WRAP_CONTENT);
+        l1.setMargins(dp(4), dp(4), dp(4), dp(4));
+        r.addView(prev, l1);
+        r.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(dp(64), ViewGroup.LayoutParams.WRAP_CONTENT);
+        l2.setMargins(dp(4), dp(4), dp(4), dp(4));
+        r.addView(next, l2);
+        return r;
+    }
 
-        for (int i = 0; i < 10; i += 2) root.addView(row(tile(i), tile(i + 1)));
+    private TextView card(String txt) {
+        TextView t = new TextView(this);
+        t.setText(txt);
+        t.setTextSize(15);
+        t.setTextColor(Color.parseColor("#263238"));
+        t.setPadding(dp(14), dp(12), dp(14), dp(12));
+        t.setBackground(round(Color.WHITE, 14));
+        t.setLineSpacing(dp(2), 1f);
+        return t;
+    }
 
-        root.addView(section("Tętno w ciągu dnia"));
-        chHr = chart(root);
-        root.addView(section("Ciśnienie (skurczowe / rozkurczowe)"));
-        chBp = chart(root);
-        root.addView(section("Tlen we krwi"));
-        chSpo2 = chart(root);
-        root.addView(section("Temperatura ciała"));
-        chTemp = chart(root);
+    private void addCard(LinearLayout p, View v) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(dp(4), dp(2), dp(4), dp(4));
+        p.addView(v, lp);
+    }
 
-        root.addView(section("Ustawienia zegarka"));
+    private android.widget.EditText numEdit(String val) {
+        android.widget.EditText e = new android.widget.EditText(this);
+        e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        e.setTextSize(16);
+        e.setGravity(Gravity.CENTER);
+        e.setSingleLine(true);
+        e.setText(val);
+        return e;
+    }
+
+    private LinearLayout labelRow(String label, View right) {
+        LinearLayout r = new LinearLayout(this);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        TextView l = new TextView(this);
+        l.setText(label);
+        l.setTextSize(15);
+        l.setTextColor(Color.parseColor("#263238"));
+        r.addView(l, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2.2f));
+        r.addView(right, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        return r;
+    }
+
+    private void buildUi() {
+        LinearLayout outer = new LinearLayout(this);
+        outer.setOrientation(LinearLayout.VERTICAL);
+        outer.setBackgroundColor(Color.parseColor("#F1F5F9"));
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.VERTICAL);
+        head.setPadding(dp(16), dp(30), dp(16), dp(4));
+        TextView title = new TextView(this);
+        title.setText("Mój zegarek JS300");
+        title.setTextSize(22);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(Color.parseColor("#0D47A1"));
+        head.addView(title);
+        tvState = new TextView(this);
+        tvState.setTextSize(14);
+        tvState.setTypeface(Typeface.DEFAULT_BOLD);
+        head.addView(tvState);
+        outer.addView(head);
+
+        sv = new ScrollView(this);
+        outer.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        // ---- Pulpit ----
+        LinearLayout p0 = page();
+        p0.addView(dateRow(false));
+        for (int i = 0; i < 10; i += 2) p0.addView(row(tile(i), tile(i + 1)));
+        p0.addView(section("Tętno w ciągu dnia"));
+        chHr = chart(p0);
+        p0.addView(section("Ciśnienie (skurczowe / rozkurczowe)"));
+        chBp = chart(p0);
+        p0.addView(section("Tlen we krwi"));
+        chSpo2 = chart(p0);
+        p0.addView(section("Temperatura ciała"));
+        chTemp = chart(p0);
+        pages[0] = p0;
+
+        // ---- Sport ----
+        LinearLayout p1 = page();
+        p1.addView(dateRow(true));
+        tvSportSum = card("");
+        tvSportSum.setTextSize(17);
+        addCard(p1, tvSportSum);
+        p1.addView(section("Kroki co 30 minut"));
+        chSteps = chart(p1);
+        chSteps.setBars(true);
+        p1.addView(section("Szczegóły"));
+        tvSportList = card("");
+        tvSportList.setTypeface(Typeface.MONOSPACE);
+        addCard(p1, tvSportList);
+        pages[1] = p1;
+
+        // ---- Urządzenie ----
+        LinearLayout p2 = page();
+        p2.addView(section("Czas podświetlenia ekranu"));
         tvScreen = new TextView(this);
         tvScreen.setTextSize(16);
         tvScreen.setGravity(Gravity.CENTER);
         tvScreen.setTextColor(Color.parseColor("#263238"));
         tvScreen.setPadding(0, dp(10), 0, dp(10));
         tvScreen.setBackground(round(Color.WHITE, 14));
-        root.addView(row(
+        p2.addView(row(
                 btn("− 1 s", "#78909C", v -> changeScreen(-1)),
                 tvScreen,
                 btn("+ 1 s", "#78909C", v -> changeScreen(1))
         ));
-        root.addView(row(btn("Zapisz czas podświetlenia w zegarku", "#6A1B9A", v -> saveScreen())));
+        p2.addView(row(btn("Zapisz w zegarku", "#6A1B9A", v -> saveScreen())));
+        p2.addView(section("Połączenie"));
+        p2.addView(row(
+                btn("Odśwież dane", "#00897B", v -> refreshWatch()),
+                btn("Połącz ponownie", "#2E7D32", v -> { stopBle(); tvState.postDelayed(this::startBle, 1500); })
+        ));
+        p2.addView(row(
+                btn("Bateria bez limitu", "#EF6C00", v -> askBattery()),
+                btn("Tryb testowy", "#455A64", v -> startActivity(new Intent(this, MainActivity.class)))
+        ));
+        TextView info = card("Wkrótce: zmiana tarczy, format godziny, ustawianie czasu – po rozpracowaniu komend z HBand.");
+        info.setTextSize(13);
+        info.setTextColor(Color.parseColor("#607D8B"));
+        addCard(p2, info);
+        pages[2] = p2;
 
-        root.addView(section("Alarmy – kiedy mam dostać powiadomienie"));
+        // ---- Profil ----
+        LinearLayout p3 = page();
+        p3.addView(section("Cele"));
+        LinearLayout goals = new LinearLayout(this);
+        goals.setOrientation(LinearLayout.VERTICAL);
+        goals.setPadding(dp(12), dp(6), dp(12), dp(6));
+        goals.setBackground(round(Color.WHITE, 14));
+        etGoalSteps = numEdit(String.valueOf(getSharedPreferences("cele", MODE_PRIVATE).getInt("kroki", 10000)));
+        etGoalSleep = numEdit(String.valueOf(getSharedPreferences("cele", MODE_PRIVATE).getFloat("sen", 7f)));
+        goals.addView(labelRow("Kroki dziennie", etGoalSteps));
+        goals.addView(labelRow("Sen (godziny)", etGoalSleep));
+        addCard(p3, goals);
+        p3.addView(row(btn("Zapisz cele", "#1565C0", v -> saveGoals())));
+
+        p3.addView(section("Alarmy – kiedy mam dostać powiadomienie"));
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(12), dp(6), dp(12), dp(6));
         box.setBackground(round(Color.WHITE, 14));
         for (int i = 0; i < BleService.TH.length; i++) {
-            LinearLayout r = new LinearLayout(this);
-            r.setGravity(Gravity.CENTER_VERTICAL);
-            TextView l = new TextView(this);
-            l.setText(BleService.TH[i][1]);
-            l.setTextSize(15);
-            l.setTextColor(Color.parseColor("#263238"));
-            android.widget.EditText e = new android.widget.EditText(this);
-            e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            e.setTextSize(16);
-            e.setGravity(Gravity.CENTER);
-            e.setSingleLine(true);
             float v = BleService.th(this, BleService.TH[i][0]);
-            e.setText(v == Math.round(v) ? String.valueOf(Math.round(v)) : String.valueOf(v));
-            thEdit[i] = e;
-            r.addView(l, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2.2f));
-            r.addView(e, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            box.addView(r);
+            thEdit[i] = numEdit(v == Math.round(v) ? String.valueOf(Math.round(v)) : String.valueOf(v));
+            box.addView(labelRow(BleService.TH[i][1], thEdit[i]));
         }
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        blp.setMargins(dp(4), 0, dp(4), dp(4));
-        root.addView(box, blp);
+        addCard(p3, box);
         btnAlarmOn = btn("", "#2E7D32", v -> toggleAlarms());
-        root.addView(row(btnAlarmOn, btn("Zapisz progi", "#1565C0", v -> saveThresholds())));
-        root.addView(row(btn("Test alarmu", "#C62828", v -> testAlarm())));
+        p3.addView(row(btnAlarmOn, btn("Zapisz progi", "#1565C0", v -> saveThresholds())));
+        p3.addView(row(btn("Test alarmu", "#C62828", v -> testAlarm())));
         TextView note = new TextView(this);
         note.setText("Alarm przychodzi dla świeżego pomiaru (z ostatnich 30 min), najwyżej raz na godzinę dla danego parametru. Zegarek nie jest urządzeniem medycznym – przy złym samopoczuciu nie czekaj na alarm.");
         note.setTextSize(12);
         note.setTextColor(Color.parseColor("#607D8B"));
         note.setPadding(dp(8), dp(4), dp(8), dp(8));
-        root.addView(note);
+        p3.addView(note);
+        pages[3] = p3;
         updateAlarmBtn();
 
-        root.addView(row(
-                btn("Odśwież", "#00897B", v -> refreshWatch()),
-                btn("Bateria bez limitu", "#EF6C00", v -> askBattery())
-        ));
-        root.addView(row(
-                btn("Połącz ponownie", "#2E7D32", v -> { stopBle(); tvState.postDelayed(this::startBle, 1500); }),
-                btn("Tryb testowy", "#455A64", v -> startActivity(new Intent(this, MainActivity.class)))
-        ));
+        // ---- dolny pasek ----
+        LinearLayout nav = new LinearLayout(this);
+        nav.setBackgroundColor(Color.WHITE);
+        nav.setPadding(dp(4), dp(4), dp(4), dp(8));
+        String[] names = {"🏠\nPulpit", "👟\nSport", "⌚\nUrządzenie", "👤\nProfil"};
+        for (int i = 0; i < 4; i++) {
+            final int k = i;
+            Button b = new Button(this);
+            b.setText(names[i]);
+            b.setAllCaps(false);
+            b.setTextSize(12);
+            b.setPadding(0, dp(4), 0, dp(4));
+            b.setOnClickListener(v -> showPage(k));
+            navBtn[i] = b;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMargins(dp(3), 0, dp(3), 0);
+            nav.addView(b, lp);
+        }
+        outer.addView(nav);
 
-        setContentView(sv);
+        setContentView(outer);
+        showPage(0);
+    }
+
+    private void showPage(int i) {
+        page = i;
+        sv.removeAllViews();
+        sv.addView(pages[i]);
+        sv.scrollTo(0, 0);
+        for (int k = 0; k < 4; k++) {
+            boolean on = k == i;
+            navBtn[k].setBackground(round(Color.parseColor(on ? "#E3F2FD" : "#FFFFFF"), 14));
+            navBtn[k].setTextColor(Color.parseColor(on ? "#1565C0" : "#78909C"));
+            navBtn[k].setTypeface(on ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+        }
+        if (tvState != null) refresh();
+    }
+
+    private void saveGoals() {
+        try {
+            int st = Integer.parseInt(etGoalSteps.getText().toString().trim());
+            float sl = Float.parseFloat(etGoalSleep.getText().toString().replace(',', '.').trim());
+            getSharedPreferences("cele", MODE_PRIVATE).edit().putInt("kroki", st).putFloat("sen", sl).apply();
+            toast("Cele zapisane");
+            refresh();
+        } catch (Exception e) {
+            toast("Wpisz poprawne liczby");
+        }
     }
 
     // ---------------- dane ----------------
@@ -291,7 +420,9 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvState.setText(st);
         tvState.setTextColor(Color.parseColor(st.startsWith("Połączony") ? "#2E7D32"
                 : (st.contains("Czekam") || st.startsWith("Rozłączony")) ? "#EF6C00" : "#C62828"));
-        tvDate.setText((isToday() ? "Dziś, " : "") + new SimpleDateFormat("dd.MM.yyyy", Locale.US).format(day.getTime()));
+        String dTxt = (isToday() ? "Dziś, " : "") + new SimpleDateFormat("dd.MM.yyyy", Locale.US).format(day.getTime());
+        tvDate.setText(dTxt);
+        tvDate2.setText(dTxt);
 
         JSONObject o = HistStore.load(this, dayKey());
         JSONObject recs = o.optJSONObject("r");
@@ -309,9 +440,12 @@ public class DashActivity extends Activity implements BleService.Listener {
         String lastBp = null, lastSpo2 = null, lastTemp = null, lastGlu = null, lastResp = null;
         String tBp = "", tSpo2 = "", tTemp = "", tGlu = "", tResp = "";
         int hrMin = 999, hrMax = 0, hrSum = 0, hrN = 0;
+        int[] slots = new int[48];
+        boolean anySteps = false;
         for (String k : sorted.keySet()) {
             JSONObject r = sorted.get(k);
             float m = Integer.parseInt(k.substring(0, 2)) * 60 + Integer.parseInt(k.substring(3, 5));
+            if (r.has("st")) { slots[Math.min(47, (int) (m / 30))] += r.optInt("st"); anySteps = true; }
             if (r.has("hr")) {
                 int v = r.optInt("hr");
                 hr.add(new float[]{m, v});
@@ -332,7 +466,10 @@ public class DashActivity extends Activity implements BleService.Listener {
         String steps = today && !BleService.sSteps.equals("–") ? BleService.sSteps : (o.has("steps") ? String.valueOf(o.optLong("steps")) : "–");
         String dist = today && !BleService.sDist.equals("–") ? BleService.sDist : (o.has("m") ? String.format(Locale.US, "%.2f km", o.optLong("m") / 1000.0) : "–");
         String kcal = today && !BleService.sKcal.equals("–") ? BleService.sKcal : (o.has("kcal") ? o.optLong("kcal") + " kcal" : "–");
-        set(0, steps, "cel: 30000");
+        int goal = getSharedPreferences("cele", MODE_PRIVATE).getInt("kroki", 10000);
+        int pct = 0;
+        try { pct = (int) (Long.parseLong(steps) * 100 / Math.max(1, goal)); } catch (Exception ignored) { }
+        set(0, steps, "cel " + goal + " (" + pct + "%)");
         set(1, dist, "");
         set(2, kcal, "");
 
@@ -353,6 +490,22 @@ public class DashActivity extends Activity implements BleService.Listener {
         if (screenWanted == 0 && BleService.screenSec > 0) screenWanted = BleService.screenSec;
         tvScreen.setText("Podświetlenie:\n" + (screenWanted > 0 ? screenWanted + " s" : "–")
                 + (BleService.screenSec > 0 && BleService.screenSec != screenWanted ? "\n(w zegarku " + BleService.screenSec + " s)" : ""));
+
+        tvSportSum.setText("Kroki: " + steps + "   (cel " + goal + ", " + pct + "%)\nDystans: " + dist + "\nKalorie: " + kcal);
+        List<float[]> bars = new ArrayList<>();
+        StringBuilder list = new StringBuilder();
+        int maxSlot = 0;
+        for (int i = 47; i >= 0; i--) {
+            if (slots[i] > 0) {
+                bars.add(new float[]{i * 30, slots[i]});
+                list.append(String.format(Locale.US, "%02d:%02d   %5d kroków\n", i / 2, (i % 2) * 30, slots[i]));
+                maxSlot = Math.max(maxSlot, slots[i]);
+            }
+        }
+        tvSportList.setText(list.length() > 0 ? list.toString().trim() : (anySteps ? "Brak kroków tego dnia" : "Brak danych – pojawią się po pobraniu historii"));
+        List<ChartView.Series> ls = new ArrayList<>();
+        ls.add(ChartView.series(bars, Color.parseColor("#1E88E5")));
+        chSteps.setData(ls, 0, Math.max(100, maxSlot * 1.15f), "");
 
         List<ChartView.Series> l1 = new ArrayList<>();
         l1.add(ChartView.series(hr, Color.parseColor("#D81B60")));

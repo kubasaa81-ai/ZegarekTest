@@ -22,6 +22,9 @@ public class ChartView extends View {
     private final List<Series> series = new ArrayList<>();
     private float min = 0, max = 100;
     private String unit = "";
+    private boolean bars = false;
+
+    public void setBars(boolean b) { bars = b; }
     private final Paint grid = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -75,6 +78,16 @@ public class ChartView extends View {
             any = true;
             line.setColor(s.color);
             dot.setColor(s.color);
+            if (bars) {
+                float bw = (right - left) / 48f * 0.7f;
+                for (float[] pt : s.pts) {
+                    float x = left + (right - left) * (pt[0] + 15) / 1440f;
+                    float y = bottom - (bottom - top) * (pt[1] - min) / (max - min);
+                    y = Math.max(top, Math.min(bottom, y));
+                    c.drawRect(x - bw / 2, y, x + bw / 2, bottom, dot);
+                }
+                continue;
+            }
             Path p = new Path();
             float lastX = -1;
             boolean first = true;

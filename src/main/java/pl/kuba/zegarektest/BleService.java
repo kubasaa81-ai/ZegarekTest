@@ -470,7 +470,7 @@ public class BleService extends Service {
         String when = null, bp = null, spo2 = null, glu = null, resp = null;
         String dKey = null, tKey = null;
         StringBuilder hr = new StringBuilder();
-        int lastHr = 0, hrSum = 0, hrN = 0, sys = 0, dia = 0, spo2v = 0, respV = 0;
+        int lastHr = 0, hrSum = 0, hrN = 0, sys = 0, dia = 0, spo2v = 0, respV = 0, steps5 = -1;
         double gluV = 0;
         int i = 4;
         while (i + 1 < v.length) {
@@ -481,6 +481,8 @@ public class BleService extends Service {
                 when = String.format(Locale.US, "%02d.%02d %02d:%02d", u8(v, d + 1), u8(v, d), u8(v, d + 2), u8(v, d + 3));
                 dKey = dayKey(u8(v, d), u8(v, d + 1));
                 tKey = String.format(Locale.US, "%02d:%02d", u8(v, d + 2), u8(v, d + 3));
+            } else if (tag == 0xB2 && len >= 2) {
+                steps5 = (u8(v, d) << 8) | u8(v, d + 1);
             } else if (tag == 0xB4) {
                 for (int k = 0; k < len; k++) {
                     int x = u8(v, d + k);
@@ -511,6 +513,7 @@ public class BleService extends Service {
         try {
             org.json.JSONObject f = new org.json.JSONObject();
             if (hrN > 0) f.put("hr", Math.round(hrSum / (float) hrN));
+            if (steps5 >= 0 && steps5 < 5000) f.put("st", steps5);
             if (sys > 0) { f.put("sys", sys); f.put("dia", dia); }
             if (spo2v > 0) f.put("spo2", spo2v);
             if (gluV > 0) f.put("glu", gluV);
