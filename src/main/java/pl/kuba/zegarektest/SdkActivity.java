@@ -99,6 +99,7 @@ public class SdkActivity extends Activity {
         super.onCreate(b);
         getWindow().setStatusBarColor(Color.parseColor("#4F46E5"));
         VPOperateManager.getInstance().init(getApplicationContext());
+        try { VPOperateManager.getInstance().setAutoConnectBTBySdk(false); } catch (Throwable ignored) { }
 
         LinearLayout outer = new LinearLayout(this);
         outer.setOrientation(LinearLayout.VERTICAL);
@@ -217,6 +218,7 @@ public class SdkActivity extends Activity {
         startService(i);
         main.postDelayed(() -> {
             status("Łączę z zegarkiem…");
+            main.postDelayed(() -> { if (!ready) out("⏳ Długo to trwa – sprawdź, czy zegarek jest blisko. Możesz stuknąć „Połącz” jeszcze raz."); }, 25000);
             try {
                 VPOperateManager.getInstance().connectDevice(mac(), "JS300",
                         (code, profile, oad) -> out("Połączenie: kod " + code + (oad ? " (tryb aktualizacji)" : "")),
