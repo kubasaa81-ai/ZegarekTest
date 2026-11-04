@@ -399,36 +399,90 @@ public class SdkActivity extends Activity {
         return f.getAbsolutePath();
     }
 
+    private boolean stepDone = false;
+
     private void sendPhotoDial() {
         pb.setVisibility(View.VISIBLE);
         pb.setProgress(0);
+        if (VPOperateManager.getInstance().isJLNotifyOpened()) {
+            out("Kanał tarcz już otwarty");
+            auth();
+            return;
+        }
         VPOperateManager.getInstance().openJLDataNotify(new BleNotifyResponse() {
             @Override public void onNotify(UUID s, UUID c, byte[] v) { }
 
             @Override
             public void onResponse(int code) {
                 out("Kanał tarcz: kod " + code);
-                VPOperateManager.getInstance().changeMTU(247, mtu -> {
-                    out("MTU: " + mtu);
-                    VPOperateManager.getInstance().startJLDeviceAuth(new RcspAuthResponse() {
-                        @Override public void onRcspAuthStart() { }
-                        @Override public void onRcspAuthSuccess() { main.post(() -> uploadPhoto()); }
-                        @Override public void onRcspAuthFailed() { out("❌ Zegarek nie przyjął połączenia do tarcz."); }
-                    });
-                });
+                VPOperateManager.getInstance().changeMTU(247, mtu -> out("MTU: " + mtu));
+                main.postDelayed(() -> auth(), 1500);
             }
         });
+    }
+
+    private void auth() {
+        if (com.inuker.bluetooth.library.jieli.RcspAuthManager.getInstance().isAuthPass()) {
+            out("Autoryzacja tarcz: już OK");
+            fileSystem();
+            return;
+        }
+        out("Autoryzacja tarcz…");
+        stepDone = false;
+        VPOperateManager.getInstance().startJLDeviceAuth(new RcspAuthResponse() {
+            @Override public void onRcspAuthStart() { out("…trwa"); }
+            @Override public void onRcspAuthSuccess() { if (!stepDone) { stepDone = true; out("Autoryzacja OK"); main.post(() -> fileSystem()); } }
+            @Override public void onRcspAuthFailed() { if (!stepDone) { stepDone = true; out("❌ Zegarek nie przyjął autoryzacji tarcz."); main.post(() -> pb.setVisibility(View.GONE)); } }
+        });
+        main.postDelayed(() -> {
+            if (!stepDone) {
+                stepDone = true;
+                out("Brak odpowiedzi autoryzacji – próbuję dalej");
+                fileSystem();
+            }
+        }, 10000);
+    }
+
+    private boolean fsDone = false;
+
+    private void fileSystem() {
+        fsDone = false;
+        out("Odczytuję tarcze w zegarku…");
+        VPOperateManager.getInstance().listJLWatchList(new JLWatchFaceManager.OnWatchDialInfoGetListener() {
+            @Override public void onGettingWatchDialInfo() { }
+            @Override public void onWatchDialInfoGetStart() { }
+            @Override public void onWatchDialInfoGetComplete() { }
+            @Override public void onWatchDialInfoGetSuccess(java.util.List<com.jieli.jl_fatfs.model.FatFile> sys,
+                                                             java.util.List<com.jieli.jl_fatfs.model.FatFile> srv,
+                                                             com.jieli.jl_fatfs.model.FatFile pic) {
+                if (fsDone) return;
+                fsDone = true;
+                out("Tarcze w zegarku: wbudowane " + (sys == null ? 0 : sys.size()) + ", pobrane " + (srv == null ? 0 : srv.size()));
+                main.post(() -> uploadPhoto());
+            }
+            @Override public void onWatchDialInfoGetFailed(com.jieli.jl_rcsp.model.base.BaseError e) {
+                if (fsDone) return;
+                fsDone = true;
+                out("Lista tarcz niedostępna (" + e + ") – wysyłam mimo to");
+                main.post(() -> uploadPhoto());
+            }
+        });
+        main.postDelayed(() -> { if (!fsDone) { fsDone = true; out("Brak listy tarcz – wysyłam mimo to"); uploadPhoto(); } }, 12000);
     }
 
     private void uploadPhoto() {
         VPOperateManager.getInstance().setJLWatchPhotoDial(photoPath, new JLWatchFaceManager.JLTransferPicDialListener() {
             @Override public void onLowPower() { out("❌ Za słaba bateria zegarka do wgrania tarczy."); }
             @Override public void onJLTransferPicDialStart() { out("Wysyłanie tarczy…"); }
-            @Override public void onTransferPicDialProgress(int p) { main.post(() -> pb.setProgress(p)); }
+            @Override public void onTransferPicDialProgress(int p) { main.post(() -> { pb.setProgress(p); tvStatus.setText("Wgrywanie tarczy: " + p + "%"); }); }
             @Override public void onScaleBGPFileTransferComplete() { }
             @Override public void onAIPreviewTransferComplete() { }
             @Override public void onBigBGPFileTransferComplete() { }
-            @Override public void onTransferComplete() { out("✅ Tarcza ze zdjęcia wgrana – sprawdź zegarek."); main.post(() -> pb.setVisibility(View.GONE)); }
+            @Override public void onTransferComplete() {
+                out("✅ Tarcza ze zdjęcia wgrana – sprawdź zegarek.");
+                try { JLWatchFaceManager.switch2PicDial(); } catch (Throwable ignored) { }
+                main.post(() -> pb.setVisibility(View.GONE));
+            }
             @Override public void onTransferError(int code, String msg) {
                 // zegarek podaje wymagany rozmiar, np. „466 / 466” – dopasuj i spróbuj raz jeszcze
                 java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{3})\\s*/\\s*(\\d{3})").matcher(msg == null ? "" : msg);
