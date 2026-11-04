@@ -180,7 +180,8 @@ public class DashActivity extends Activity implements BleService.Listener {
         BleService s = BleService.instance;
         if (s == null) { toast("Brak połączenia z zegarkiem"); return; }
         s.sendMessage(type, name, content);
-        toast("Wysłano – spójrz na zegarek");
+        if (type == 0x00) tvNotif.postDelayed(() -> { BleService b = BleService.instance; if (b != null) b.stopCall(); }, 10000);
+        toast(type == 0x00 ? "Zegarek powinien dzwonić ok. 10 s" : "Wysłano – spójrz na zegarek");
     }
 
     private void notifStatus() {

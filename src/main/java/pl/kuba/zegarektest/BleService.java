@@ -607,12 +607,19 @@ public class BleService extends Service {
             System.arraycopy(part, 0, p, 6, part.length);
             sendVeepoo(p);
         }
+        // połączenie: po nazwie polecenie „dzwoni” (tak robi HBand – zegarek odpowiada C1 01 01)
+        if (type == 0x00) sendVeepoo(new byte[]{(byte) 0xC1, 0x01, 0x01, 0x01});
+    }
+
+    /** Koniec dzwonienia na zegarku (odebrane / odrzucone). */
+    public void stopCall() {
+        sendVeepoo(new byte[]{(byte) 0xC1, 0x00, 0x00, 0x00});
     }
 
     // ---------------- połączenia przychodzące ----------------
 
     private String lastRing = "";
-    private final Runnable ringFallback = () -> sendMessage(0x00, "Połączenie przychodzące", "");
+    private final Runnable ringFallback = () -> { lastRing = "?"; sendMessage(0x00, "Połączenie", ""); };
 
     private final BroadcastReceiver phoneReceiver = new BroadcastReceiver() {
         @Override
@@ -631,8 +638,11 @@ public class BleService extends Service {
                 main.removeCallbacks(ringFallback);
                 sendMessage(0x00, contactName(num), "");
             } else {
+                boolean wasRinging = !lastRing.isEmpty();
                 lastRing = "";
                 main.removeCallbacks(ringFallback);
+                if (wasRinging || android.telephony.TelephonyManager.EXTRA_STATE_OFFHOOK.equals(st)
+                        || android.telephony.TelephonyManager.EXTRA_STATE_IDLE.equals(st)) stopCall();
             }
         }
     };
