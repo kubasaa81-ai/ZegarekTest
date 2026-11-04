@@ -75,7 +75,7 @@ public class DashActivity extends Activity implements BleService.Listener {
                     + "\n👉 Dotknij – wykres faz i tydzień");
             return;
         }
-        tvSleep.setText("😴  Sen: brak danych\n👉 Dotknij, aby otworzyć zakładkę Sen i pobrać");
+        tvSleep.setText("😴  Sen: brak danych\nPobierze się sam rano · 👉 Dotknij, by otworzyć zakładkę Sen");
     }
 
     @Override
@@ -440,6 +440,10 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvSleep.setTextSize(15);
         tvSleep.setOnClickListener(v -> startActivity(new Intent(this, SleepActivity.class)));
         addCard(p0, tvSleep);
+        p0.addView(row(
+                btn("🩺 Zmierz teraz", "#E11D48", v -> startActivity(new Intent(this, MeasureActivity.class))),
+                btn("⏰ Przypomnienia", "#0D9488", v -> startActivity(new Intent(this, RemindActivity.class)))
+        ));
         for (int i = 0; i < 10; i += 2) p0.addView(row(tile(i), tile(i + 1)));
         p0.addView(section("Tętno w ciągu dnia"));
         chHr = chart(p0);
@@ -487,8 +491,13 @@ public class DashActivity extends Activity implements BleService.Listener {
                 btn("+ 1 s", "#78909C", v -> changeScreen(1))
         ));
         p2.addView(row(btn("Zapisz w zegarku", "#6A1B9A", v -> saveScreen())));
-        p2.addView(section("Nowe funkcje (beta)"));
-        p2.addView(row(btn("✨ Sen, godzina i tarcza ze zdjęcia", "#4F46E5", v -> startActivity(new Intent(this, SdkActivity.class)))));
+        p2.addView(section("Zdrowie"));
+        p2.addView(row(
+                btn("🩺 Zmierz teraz", "#E11D48", v -> startActivity(new Intent(this, MeasureActivity.class))),
+                btn("⏰ Przypomnienia", "#0D9488", v -> startActivity(new Intent(this, RemindActivity.class)))
+        ));
+        p2.addView(section("Tarcza i ustawienia zegarka"));
+        p2.addView(row(btn("⌚ Tarcza ze zdjęcia, wygląd, język, głośność", "#4F46E5", v -> startActivity(new Intent(this, SdkActivity.class)))));
         p2.addView(section("Tarcza zegarka"));
         p2.addView(row(
                 btn("1", "#3949AB", v -> setFace(0)),
@@ -535,7 +544,20 @@ public class DashActivity extends Activity implements BleService.Listener {
                 btn("Bateria bez limitu", "#EF6C00", v -> askBattery()),
                 btn("Tryb testowy", "#455A64", v -> startActivity(new Intent(this, MainActivity.class)))
         ));
-        TextView info = card("Wkrótce: zmiana tarczy, format godziny, ustawianie czasu – po rozpracowaniu komend z HBand.");
+        Button bMode = btn("", "#334155", v -> { });
+        Runnable modeLabel = () -> bMode.setText(BleService.useSdk(this)
+                ? "Tryb: jedno połączenie (biblioteka producenta) ✓\nDotknij, by wrócić do starego"
+                : "Tryb: stare połączenie\nDotknij, by włączyć jedno połączenie (zalecane)");
+        modeLabel.run();
+        bMode.setOnClickListener(v -> {
+            getSharedPreferences("ust", MODE_PRIVATE).edit().putBoolean("sdk", !BleService.useSdk(this)).apply();
+            modeLabel.run();
+            stopBle();
+            tvState.postDelayed(this::startBle, 2500);
+            toast("Łączę ponownie w nowym trybie…");
+        });
+        p2.addView(row(bMode));
+        TextView info = card("Godzina i data ustawiają się same przy każdym połączeniu, a sen pobiera się sam każdego ranka.");
         info.setTextSize(13);
         info.setTextColor(Color.parseColor("#607D8B"));
         addCard(p2, info);

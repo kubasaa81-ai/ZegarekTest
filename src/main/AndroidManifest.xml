@@ -57,6 +57,8 @@
             </intent-filter>
         </activity-alias>
 
+        <activity android:name=".MeasureActivity" android:exported="false" />
+        <activity android:name=".RemindActivity" android:exported="false" />
         <activity
             android:name=".SleepActivity"
             android:exported="false" />

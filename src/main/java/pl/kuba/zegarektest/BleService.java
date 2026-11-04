@@ -92,7 +92,7 @@ public class BleService extends Service {
         if (!force && last != null && now - last < 60 * 60 * 1000) return;
         lastAlarm.put(key, now);
         log("ALARM: " + msg);
-        if (gatt != null) {
+        if (linked()) {
             sendMessage(0x01, "ALARM", msg);
         }
         Intent open = new Intent(this, DashActivity.class);
@@ -123,7 +123,7 @@ public class BleService extends Service {
         }
     }
 
-    private void checkRecord(String tKey, int hr, int sys, int dia, int spo2, double glu) {
+    void checkRecord(String tKey, int hr, int sys, int dia, int spo2, double glu) {
         String at = " (o " + tKey + ")";
         if (hr > 0 && hr > th(this, "hrHi")) alarm("hrHi", "Wysokie tętno: " + hr + " uderzeń/min" + at, false);
         if (hr > 0 && hr < th(this, "hrLo")) alarm("hrLo", "Niskie tętno: " + hr + " uderzeń/min" + at, false);
@@ -149,6 +149,226 @@ public class BleService extends Service {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private BluetoothGatt gatt;
+
+    // ---------------- połączenie przez bibliotekę producenta ----------------
+    /** true = jedno połączenie przez bibliotekę HBand (domyślnie). */
+    public static boolean useSdk(Context c) {
+        return c.getSharedPreferences("ust", MODE_PRIVATE).getBoolean("sdk", true);
+    }
+
+    private boolean sdkLink = false;      // aktywne połączenie przez bibliotekę
+    private boolean sdkConnecting = false;
+    private boolean statusReg = false;
+    private int sdkFails = 0, connAttempt = 0;
+    private String mac;
+    private java.util.UUID svcUuid, wrUuid, ntUuid;
+    private final java.util.List<java.util.UUID[]> extraNotify = new ArrayList<>();
+    private com.inuker.bluetooth.library.BluetoothClient client;
+
+    public boolean linked() { return sdkLink ? Sdk.ready : gatt != null && !writable.isEmpty(); }
+
+    private final com.inuker.bluetooth.library.connect.response.BleNotifyResponse rawNotify =
+            new com.inuker.bluetooth.library.connect.response.BleNotifyResponse() {
+                @Override
+                public void onNotify(java.util.UUID service, java.util.UUID ch, byte[] value) {
+                    try {
+                        final byte[] val = value == null ? new byte[0] : value.clone();
+                        final String u = shortUuid(ch);
+                        main.post(() -> { try { handleNotify(u, val); } catch (Throwable t) { log("Błąd dekodowania: " + t); } });
+                    } catch (Throwable ignored) { }
+                }
+
+                @Override
+                public void onResponse(int code) {
+                    log("Nasłuch (wspólne połączenie): " + (code == 0 ? "włączony" : "kod " + code));
+                }
+            };
+
+    private final com.veepoo.protocol.listener.base.IABleConnectStatusListener statusL =
+            new com.veepoo.protocol.listener.base.IABleConnectStatusListener() {
+                @Override
+                public void onConnectStatusChanged(String m, int status) {
+                    main.post(() -> {
+                        if (status == com.inuker.bluetooth.library.Constants.STATUS_DISCONNECTED && (Sdk.ready || sdkConnecting)) {
+                            log("ROZŁĄCZONO (biblioteka)");
+                            Sdk.ready = false;
+                            sdkConnecting = false;
+                            main.removeCallbacks(poll);
+                            setState("Rozłączony – czekam na zegarek…");
+                            notifyUi();
+                            retrySdk();
+                        }
+                    });
+                }
+            };
+
+    private void connectSdk(String addr) {
+        if (sdkConnecting || Sdk.ready) return;
+        sdkLink = true;
+        sdkConnecting = true;
+        mac = addr;
+        setState("Łączę z zegarkiem…");
+        log("Łączę przez bibliotekę producenta: " + addr);
+        try {
+            com.veepoo.protocol.VPOperateManager m = Sdk.m();
+            m.init(getApplicationContext());
+            try { m.setAutoConnectBTBySdk(false); } catch (Throwable ignored) { }
+            if (!statusReg) { m.registerConnectStatusListener(addr, statusL); statusReg = true; }
+            final int my = ++connAttempt;
+            main.postDelayed(() -> {
+                if (my == connAttempt && sdkConnecting && !Sdk.ready) {
+                    log("Brak połączenia w 45 s – ponawiam");
+                    sdkConnecting = false;
+                    try { m.disconnectWatch(Sdk.wr); } catch (Throwable ignored) { }
+                    retrySdk();
+                }
+            }, 45000);
+            m.connectDevice(addr, "JS300",
+                    (code, profile, oad) -> main.post(() -> {
+                        log("Połączenie (biblioteka): kod " + code);
+                        if (code != 0 && my == connAttempt) {
+                            sdkConnecting = false;
+                            retrySdk();
+                        }
+                    }),
+                    st -> main.post(() -> {
+                        log("Nasłuch (biblioteka): kod " + st);
+                        if (st == 0 && my == connAttempt) {
+                            setState("Połączony – hasło…");
+                            main.postDelayed(() -> Sdk.confirm(this::log,
+                                    () -> main.post(() -> { if (my == connAttempt) sdkReady(); }),
+                                    () -> main.post(() -> {
+                                        if (my != connAttempt) return;
+                                        sdkConnecting = false;
+                                        try { m.disconnectWatch(Sdk.wr); } catch (Throwable ignored) { }
+                                        retrySdk();
+                                    })), 500);
+                        }
+                    }));
+        } catch (Throwable t) {
+            log("Błąd biblioteki: " + t + " – wracam do zwykłego połączenia");
+            sdkConnecting = false;
+            fallbackOwn();
+        }
+    }
+
+    private void retrySdk() {
+        if (!wantConnected) return;
+        sdkFails++;
+        long d = Math.min(60000, 5000L * sdkFails);
+        main.removeCallbacks(reconnect);
+        main.postDelayed(reconnect, d);
+    }
+
+    private final Runnable reconnect = () -> connect();
+
+    private void fallbackOwn() {
+        getSharedPreferences("ust", MODE_PRIVATE).edit().putBoolean("sdk", false).apply();
+        sdkLink = false;
+        Sdk.ready = false;
+        try { Sdk.m().disconnectWatch(Sdk.wr); } catch (Throwable ignored) { }
+        main.postDelayed(this::connect, 2000);
+    }
+
+    private void sdkReady() {
+        sdkConnecting = false;
+        svcUuid = wrUuid = ntUuid = null;
+        extraNotify.clear();
+        try {
+            BluetoothGatt g = Sdk.m().getCurrentConnectGatt();
+            if (g != null) for (BluetoothGattService sv : g.getServices()) {
+                for (BluetoothGattCharacteristic c : sv.getCharacteristics()) {
+                    String u = c.getUuid().toString();
+                    if (u.startsWith("f0080003")) { svcUuid = sv.getUuid(); wrUuid = c.getUuid(); }
+                    if (u.startsWith("f0080002")) ntUuid = c.getUuid();
+                    if (u.startsWith("0000fea1")) extraNotify.add(new java.util.UUID[]{sv.getUuid(), c.getUuid()});
+                }
+            }
+        } catch (Throwable t) { log("Usługi: " + t); }
+        client = Sdk.client();
+        if (client == null || wrUuid == null || ntUuid == null) {
+            log("Nie znalazłem kanału danych w bibliotece – wracam do zwykłego połączenia");
+            fallbackOwn();
+            return;
+        }
+        Sdk.ready = true;
+        sdkFails = 0;
+        try { client.notify(mac, svcUuid, ntUuid, rawNotify); } catch (Throwable t) { log("Nasłuch: " + t); }
+        for (java.util.UUID[] x : extraNotify) {
+            try { client.notify(mac, x[0], x[1], rawNotify); } catch (Throwable ignored) { }
+        }
+        log("POŁĄCZONO (jedno połączenie przez bibliotekę, wersja zegarka " + Sdk.version + ", godzina ustawiona)");
+        setState("Połączony");
+        notifyUi();
+        main.postDelayed(() -> {
+            if (!Sdk.ready) return;
+            sendVeepoo(new byte[]{(byte) 0xD8, 0});
+            sendVeepoo(new byte[]{(byte) 0xA0, 0});
+            sendVeepoo(new byte[]{(byte) 0xDF, 0});
+            sendVeepoo(new byte[]{(byte) 0xB4, 0x02});
+            sendVeepoo(new byte[]{(byte) 0xC7, 0x02});
+        }, 1500);
+        main.postDelayed(this::autoSleep, 25000);
+        main.removeCallbacks(poll);
+        main.postDelayed(poll, 5 * 60 * 1000);
+    }
+
+    /** Raz dziennie (od 6:00) pobiera sen z zegarka. */
+    private void autoSleep() {
+        if (!Sdk.ready || busySdk) return;
+        String t = today();
+        android.content.SharedPreferences sp = getSharedPreferences("ust", MODE_PRIVATE);
+        if (t.equals(sp.getString("senDzien", "")) ) return;
+        if (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) < 6) return;
+        log("Automatycznie: pobieram sen");
+        try {
+            Sdk.readSleep(this, this::log, () -> {
+                sp.edit().putString("senDzien", t).apply();
+                notifyUi();
+            });
+        } catch (Throwable e) { log("Sen: " + e); }
+    }
+
+    // ---------------- przypomnienia (woda, leki, inne) ----------------
+    private final Runnable remindTick = new Runnable() {
+        @Override
+        public void run() {
+            try { checkReminders(); } catch (Throwable ignored) { }
+            main.postDelayed(this, 30000);
+        }
+    };
+
+    private void checkReminders() throws Exception {
+        org.json.JSONArray a = RemindActivity.load(this);
+        if (a.length() == 0) return;
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        int h = c.get(java.util.Calendar.HOUR_OF_DAY), m = c.get(java.util.Calendar.MINUTE);
+        android.content.SharedPreferences sp = RemindActivity.sp(this);
+        String t = today();
+        for (int i = 0; i < a.length(); i++) {
+            org.json.JSONObject o = a.optJSONObject(i);
+            if (o == null || o.optInt("h") != h || o.optInt("m") != m) continue;
+            String k = "f_" + h + "_" + m + "_" + o.optString("t").hashCode();
+            if (t.equals(sp.getString(k, ""))) continue;
+            sp.edit().putString(k, t).apply();
+            String text = o.optString("t");
+            log("Przypomnienie: " + text);
+            if (!o.optBoolean("zeg") && linked()) sendMessage(0x01, "Przypomnienie", text);
+            Intent open = new Intent(this, RemindActivity.class);
+            PendingIntent pi = PendingIntent.getActivity(this, 2, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            Notification n = new Notification.Builder(this, "alarm")
+                    .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                    .setContentTitle("Przypomnienie")
+                    .setContentText(text)
+                    .setContentIntent(pi)
+                    .setAutoCancel(true)
+                    .build();
+            try { getSystemService(NotificationManager.class).notify(300 + i, n); } catch (Exception ignored) { }
+        }
+    }
+
+    /** Ekran pomiaru/tarczy pracuje z biblioteką – nie przeszkadzamy. */
+    public static volatile boolean busySdk = false;
     private boolean wantConnected = false;
     private final ArrayDeque<Runnable> queue = new ArrayDeque<>();
     private boolean busy = false;
@@ -179,6 +399,20 @@ public class BleService extends Service {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((th, ex) -> {
+            try {
+                java.io.StringWriter sw = new java.io.StringWriter();
+                ex.printStackTrace(new java.io.PrintWriter(sw));
+                String tr = sw.toString();
+                appendLog(this, "AWARIA: " + tr);
+                if (sdkLink && (tr.contains("veepoo") || tr.contains("inuker") || tr.contains("jieli"))) {
+                    getSharedPreferences("ust", MODE_PRIVATE).edit().putBoolean("sdk", false).commit();
+                    appendLog(this, "Awaria w bibliotece producenta – następnym razem zwykłe połączenie");
+                }
+            } catch (Throwable ignored) { }
+            if (prev != null) prev.uncaughtException(th, ex);
+        });
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel(CH_ID, "Połączenie z zegarkiem", NotificationManager.IMPORTANCE_LOW));
         NotificationChannel al = new NotificationChannel("alarm", "Alarmy zdrowia", NotificationManager.IMPORTANCE_HIGH);
@@ -186,6 +420,7 @@ public class BleService extends Service {
         al.setVibrationPattern(new long[]{0, 400, 200, 400, 200, 400});
         nm.createNotificationChannel(al);
         startFg();
+        main.postDelayed(remindTick, 15000);
         try {
             registerReceiver(phoneReceiver, new IntentFilter(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED));
         } catch (Exception ignored) { }
@@ -239,6 +474,8 @@ public class BleService extends Service {
         try { unregisterReceiver(btReceiver); } catch (Exception ignored) { }
         try { unregisterReceiver(phoneReceiver); } catch (Exception ignored) { }
         closeGatt();
+        main.removeCallbacks(remindTick);
+        if (statusReg) { try { Sdk.m().unregisterConnectStatusListener(mac, statusL); } catch (Throwable ignored) { } statusReg = false; }
         instance = null;
         super.onDestroy();
     }
@@ -267,6 +504,8 @@ public class BleService extends Service {
             setState("Zły adres zegarka");
             return;
         }
+        if (useSdk(this)) { connectSdk(addr); return; }
+        sdkLink = false;
         log("Czekam na zegarek " + addr + " (łączenie automatyczne)");
         setState("Czekam na zegarek…");
         // autoConnect = true: Android sam połączy, gdy tylko zegarek będzie w zasięgu
@@ -275,6 +514,13 @@ public class BleService extends Service {
 
     private void closeGatt() {
         main.removeCallbacks(poll);
+        main.removeCallbacks(reconnect);
+        if (sdkLink && (Sdk.ready || sdkConnecting)) {
+            connAttempt++;
+            Sdk.ready = false;
+            sdkConnecting = false;
+            try { Sdk.m().disconnectWatch(Sdk.wr); } catch (Throwable ignored) { }
+        }
         queue.clear();
         busy = false;
         if (gatt != null) {
@@ -391,7 +637,7 @@ public class BleService extends Service {
         return (long) u8(v, i) | ((long) u8(v, i + 1) << 8) | ((long) u8(v, i + 2) << 16) | ((long) u8(v, i + 3) << 24);
     }
 
-    private void notifyUi() {
+    void notifyUi() {
         WatchWidget.update(this);
         Listener l = listener;
         if (l != null) main.post(l::onStateChanged);
@@ -669,6 +915,16 @@ public class BleService extends Service {
 
     /** Wysyła komendę do głównego kanału Veepoo (f0080003), dopełnioną zerami do 20 bajtów. */
     public boolean sendVeepoo(byte[] d) {
+        if (sdkLink) {
+            if (!Sdk.ready || client == null) return false;
+            byte[] p = new byte[Math.max(20, d.length)];
+            System.arraycopy(d, 0, p, 0, d.length);
+            log("→ f0080003  " + hex(p));
+            try {
+                client.write(mac, svcUuid, wrUuid, p, code -> { if (code != 0) log("Zapis: kod " + code); });
+            } catch (Throwable t) { log("Zapis: " + t); return false; }
+            return true;
+        }
         BluetoothGattCharacteristic target = null;
         for (BluetoothGattCharacteristic c : writable) {
             if (c.getUuid().toString().startsWith("f0080003")) { target = c; break; }
@@ -727,8 +983,9 @@ public class BleService extends Service {
     private final Runnable poll = new Runnable() {
         @Override
         public void run() {
-            if (gatt == null) return;
+            if (!linked()) return;
             sendVeepoo(new byte[]{(byte) 0xD8, 0});
+            if (sdkLink) autoSleep();
             sendVeepoo(new byte[]{(byte) 0xA0, 0});
             if (++pollCount % 3 == 0) sendVeepoo(new byte[]{(byte) 0xDF, 0});
             main.postDelayed(this, 5 * 60 * 1000);

@@ -158,7 +158,17 @@ public class SleepActivity extends Activity {
         tvWeek = card(14);
         add(p, tvWeek, ViewGroup.LayoutParams.WRAP_CONTENT);
 
-        Button get = btn("Pobierz sen z zegarka", v -> startActivity(new Intent(this, SdkActivity.class)));
+        Button get = btn("Pobierz sen z zegarka", v -> {
+            if (Sdk.ready) {
+                android.widget.Toast.makeText(this, "Pobieram sen…", android.widget.Toast.LENGTH_SHORT).show();
+                Sdk.readSleep(this, x -> { }, () -> runOnUiThread(() -> {
+                    android.widget.Toast.makeText(this, "Sen pobrany", android.widget.Toast.LENGTH_SHORT).show();
+                    refresh();
+                }));
+            } else if (BleService.useSdk(this)) {
+                android.widget.Toast.makeText(this, "Zegarek nie jest teraz połączony – spróbuj za chwilę", android.widget.Toast.LENGTH_LONG).show();
+            } else startActivity(new Intent(this, SdkActivity.class));
+        });
         get.setTextSize(15);
         add(p, get, ViewGroup.LayoutParams.WRAP_CONTENT);
 

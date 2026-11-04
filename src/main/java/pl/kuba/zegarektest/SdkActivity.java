@@ -61,6 +61,19 @@ public class SdkActivity extends Activity {
     private TextView tvStatus, tvOut;
     private ProgressBar pb;
     private boolean ready = false;
+    private boolean shared = false;
+    private int waitN = 0;
+    private final Runnable waitShared = new Runnable() {
+        @Override public void run() {
+            if (isFinishing()) return;
+            if (Sdk.ready) { ready = true; status("Połączono – możesz korzystać z przycisków"); return; }
+            if (++waitN == 1) {
+                try { startForegroundService(new Intent(getApplicationContext(), BleService.class)); } catch (Exception ignored) { }
+            }
+            if (waitN % 20 == 0) out("⏳ Zegarek jeszcze się nie połączył – sprawdź, czy jest blisko telefonu.");
+            main.postDelayed(this, 1500);
+        }
+    };
     private int watchDays = 3;
     private String photoPath = null;
     private Uri photoUri = null;
@@ -121,7 +134,7 @@ public class SdkActivity extends Activity {
         back.setOnClickListener(v -> finish());
         head.addView(back);
         TextView title = new TextView(this);
-        title.setText("Sen, godzina i tarcze ✨");
+        title.setText("Tarcza i ustawienia zegarka ⌚");
         title.setTextSize(24);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.WHITE);
@@ -129,7 +142,9 @@ public class SdkActivity extends Activity {
         tvStatus = new TextView(this);
         tvStatus.setTextSize(14);
         tvStatus.setTextColor(Color.parseColor("#E0E7FF"));
-        tvStatus.setText("Najpierw stuknij „Połącz”.");
+        shared = BleService.useSdk(this);
+        tvStatus.setText(shared ? (Sdk.ready ? "Połączono – możesz korzystać z przycisków" : "Czekam na połączenie z zegarkiem…") : "Najpierw stuknij „Połącz”.");
+        if (shared) { ready = Sdk.ready; if (!ready) main.postDelayed(waitShared, 1500); }
         head.addView(tvStatus);
         outer.addView(head);
 
@@ -140,7 +155,7 @@ public class SdkActivity extends Activity {
         sv.addView(p);
         outer.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        add(p, btn("🔗  1. Połącz (biblioteka HBand)", "#16A34A", "#15803D", v -> connect()));
+        if (!shared) add(p, btn("🔗  1. Połącz (biblioteka HBand)", "#16A34A", "#15803D", v -> connect()));
         add(p, btn("🕒  Ustaw godzinę i datę z telefonu", "#2563EB", "#1D4ED8", v -> setTime()));
         add(p, btn("😴  Pobierz sen (ostatnie noce)", "#4F46E5", "#4338CA", v -> readSleep()));
         add(p, btn("🖼️  Tarcza ze zdjęcia – wybierz zdjęcie", "#DB2777", "#BE185D", v -> pickPhoto()));
@@ -194,7 +209,7 @@ public class SdkActivity extends Activity {
         add(p, btn("🇵🇱  Język zegarka: polski (data dzień.miesiąc)", "#DC2626", "#B91C1C", v -> setPolish()));
         styleLabels();
 
-        add(p, btn("↩️  Zakończ i wróć do zwykłego połączenia", "#64748B", "#475569", v -> finish()));
+        if (!shared) add(p, btn("↩️  Zakończ i wróć do zwykłego połączenia", "#64748B", "#475569", v -> finish()));
 
         pb = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         pb.setMax(100);
@@ -210,7 +225,8 @@ public class SdkActivity extends Activity {
         cg.setCornerRadius(dp(22));
         tvOut.setBackground(cg);
         tvOut.setLineSpacing(dp(3), 1f);
-        tvOut.setText("Ten ekran używa oficjalnej biblioteki producenta zegarka. Na czas pracy tutaj zwykłe połączenie aplikacji jest wstrzymane – wróci po wyjściu.");
+        tvOut.setText(shared ? "Wspólne połączenie z zegarkiem – nic nie trzeba wstrzymywać. Sen pobiera się też sam każdego ranka."
+                : "Ten ekran używa oficjalnej biblioteki producenta zegarka. Na czas pracy tutaj zwykłe połączenie aplikacji jest wstrzymane – wróci po wyjściu.");
         add(p, tvOut);
 
         setContentView(outer);
@@ -242,7 +258,8 @@ public class SdkActivity extends Activity {
     }
 
     private boolean need() {
-        if (!ready) { out("⚠️ Najpierw połącz (przycisk 1)."); return false; }
+        if (shared) ready = Sdk.ready;
+        if (!ready) { out(shared ? "⚠️ Zegarek nie jest teraz połączony – poczekaj chwilę." : "⚠️ Najpierw połącz (przycisk 1)."); return false; }
         return true;
     }
 
@@ -285,7 +302,8 @@ public class SdkActivity extends Activity {
             }
         }, new IDeviceFuctionDataListener() {
             @Override public void onFunctionSupportDataChange(FunctionDeviceSupportData f) {
-                watchDays = Math.max(1, f.getWathcDay());
+                Sdk.watchDays = Math.max(1, f.getWathcDay());
+                Sdk.func = f;
                 out("Zegarek pamięta dni: " + f.getWathcDay());
             }
             @Override public void onDeviceFunctionPackage1Report(DeviceFunctionPackage1 p) { }
@@ -415,40 +433,7 @@ public class SdkActivity extends Activity {
     private void readSleep() {
         if (!need()) return;
         out("😴 Pobieram sen…");
-        VPOperateManager.getInstance().readSleepData(wr, new ISleepDataListener() {
-            @Override
-            public void onSleepDataChange(String day, SleepData s) {
-                try {
-                    String down = s.getSleepDown() == null ? "?" : s.getSleepDown().getClock();
-                    String up = s.getSleepUp() == null ? "?" : s.getSleepUp().getClock();
-                    String date = s.getDate() != null ? s.getDate() : day;
-                    int all = s.getAllSleepTime(), deep = s.getDeepSleepTime(), light = s.getLowSleepTime();
-                    out(String.format("Noc do %s: %s → %s, razem %dh %02dmin (głęboki %dh %02dmin, płytki %dh %02dmin), pobudki: %d, jakość: %d/5",
-                            date, down, up, all / 60, all % 60, deep / 60, deep % 60, light / 60, light % 60, s.getWakeCount(), s.getSleepQulity()));
-                    JSONObject j = new JSONObject();
-                    j.put("od", down);
-                    j.put("do", up);
-                    j.put("min", all);
-                    j.put("gleboki", deep);
-                    j.put("plytki", light);
-                    j.put("pobudki", s.getWakeCount());
-                    j.put("jakosc", s.getSleepQulity());
-                    j.put("linia", s.getSleepLine());
-                    HistStore.putSleep(SdkActivity.this, date, j);
-                } catch (Exception e) {
-                    out("Sen (surowo): " + s);
-                }
-            }
-
-            @Override public void onSleepProgress(float progress) { }
-            @Override public void onSleepProgressDetail(String day, int n) { }
-
-            @Override
-            public void onReadSleepComplete() {
-                HistStore.flush();
-                out("😴 Sen pobrany.");
-            }
-        }, watchDays);
+        Sdk.readSleep(this, this::out, () -> out("😴 Gotowe – zobacz zakładkę Sen na Pulpicie."));
     }
 
     // ---------------- tarcza ze zdjęcia ----------------
@@ -622,6 +607,8 @@ public class SdkActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        main.removeCallbacks(waitShared);
+        if (shared) { super.onDestroy(); return; }
         try { VPOperateManager.getInstance().disconnectWatch(wr); } catch (Throwable ignored) { }
         main.postDelayed(() -> {
             try { startForegroundService(new Intent(getApplicationContext(), BleService.class)); } catch (Exception ignored) { }
