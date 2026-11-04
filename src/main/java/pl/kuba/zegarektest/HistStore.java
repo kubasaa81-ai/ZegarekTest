@@ -86,6 +86,15 @@ public class HistStore {
         } catch (Exception ignored) { }
     }
 
+    /** Sen zapisany pod dniem pobudki. */
+    public static synchronized void putSleep(Context c, String day, JSONObject sleep) {
+        try {
+            JSONObject o = load(c, day);
+            o.put("sleep", sleep);
+            saveSoon(c, day);
+        } catch (Exception ignored) { }
+    }
+
     /** Podsumowanie dnia (kroki, metry, kcal). */
     public static synchronized void putDay(Context c, String day, long steps, long meters, long kcal) {
         try {

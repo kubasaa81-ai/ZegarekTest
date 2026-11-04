@@ -11,8 +11,8 @@ android {
         applicationId 'pl.kuba.zegarektest'
         minSdk 28
         targetSdk 34
-        versionCode 25
-        versionName '2.8'
+        versionCode 26
+        versionName '3.0-beta'
     }
 
     signingConfigs {
@@ -41,6 +41,12 @@ android {
 }
 
 dependencies {
+    // Oficjalna biblioteka HBand/Veepoo (Apache 2.0) – sen, godzina, tarcze
+    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+    implementation 'no.nordicsemi.android:mcumgr-core:2.7.4'
+    implementation 'no.nordicsemi.android:mcumgr-ble:2.7.4'
+    implementation 'no.nordicsemi.android.support.v18:scanner:1.4.2'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.health.connect:connect-client:1.1.0-alpha07'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }

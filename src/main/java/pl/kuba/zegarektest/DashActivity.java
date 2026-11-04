@@ -461,6 +461,8 @@ public class DashActivity extends Activity implements BleService.Listener {
                 btn("+ 1 s", "#78909C", v -> changeScreen(1))
         ));
         p2.addView(row(btn("Zapisz w zegarku", "#6A1B9A", v -> saveScreen())));
+        p2.addView(section("Nowe funkcje (beta)"));
+        p2.addView(row(btn("✨ Sen, godzina i tarcza ze zdjęcia", "#4F46E5", v -> startActivity(new Intent(this, SdkActivity.class)))));
         p2.addView(section("Tarcza zegarka"));
         p2.addView(row(
                 btn("1", "#3949AB", v -> setFace(0)),
