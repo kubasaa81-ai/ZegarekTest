@@ -612,10 +612,7 @@ public class BleService extends Service {
             sendVeepoo(p);
         }
         // połączenie: po nazwie polecenie „dzwoni” (tak robi HBand – zegarek odpowiada C1 01 01)
-        if (type == 0x00) {
-            sendVeepoo(new byte[]{(byte) 0xC1, 0x01, 0x01, 0x01});
-            buzz();
-        }
+        if (type == 0x00 && getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("wibracjaTel", false)) buzz();
     }
 
     /** Wibracja zegarka jak przy „Znajdź zegarek” (ok. 10 s). */
@@ -625,9 +622,7 @@ public class BleService extends Service {
     }
 
     /** Koniec dzwonienia na zegarku (odebrane / odrzucone). */
-    public void stopCall() {
-        sendVeepoo(new byte[]{(byte) 0xC1, 0x00, 0x00, 0x00});
-    }
+    public void stopCall() { }
 
     // ---------------- połączenia przychodzące ----------------
 

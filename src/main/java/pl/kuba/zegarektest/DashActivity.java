@@ -193,7 +193,7 @@ public class DashActivity extends Activity implements BleService.Listener {
                 + "\n" + (apps ? "✅" : "⬜") + "  SMS, WhatsApp, Messenger i inne aplikacje"
                 + "\n" + "✅  Alarmy zdrowia jako napis „ALARM”"
                 + "\n" + (getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("wibracja", true) ? "✅" : "⬜")
-                + "  Wibracja zegarka przy połączeniu i alarmie (dotknij, by zmienić)"
+                + "  Wibracja przy alarmie zdrowia (dotknij kartę, by zmienić)"
                 + (apps ? "\n\nWyłącz powiadomienia w HBand albo ją odinstaluj, żeby nie przychodziły podwójnie." : ""));
     }
     private ChartView chWeek;
@@ -492,7 +492,12 @@ public class DashActivity extends Activity implements BleService.Listener {
         ));
         p2.addView(row(
                 btn("Test wiadomości", "#7C3AED", v -> testMsg(0x01, "Mój Zegarek", "Test powiadomienia – działa! Zażółć gęślą jaźń")),
-                btn("Test połączenia", "#DB2777", v -> testMsg(0x00, "Ania Test", ""))
+                btn("Test alarmu na zegarku", "#DB2777", v -> {
+                    BleService b = BleService.instance;
+                    if (b == null) { toast("Brak połączenia z zegarkiem"); return; }
+                    b.alarm("test", "Test: wysokie ciśnienie 150/95", true);
+                    toast("Najpierw wibracja, po chwili napis ALARM");
+                })
         ));
         p2.addView(section("Połączenie"));
         p2.addView(row(

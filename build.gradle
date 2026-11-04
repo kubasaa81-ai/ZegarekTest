@@ -11,8 +11,8 @@ android {
         applicationId 'pl.kuba.zegarektest'
         minSdk 28
         targetSdk 34
-        versionCode 22
-        versionName '2.5'
+        versionCode 23
+        versionName '2.6'
     }
 
     signingConfigs {
