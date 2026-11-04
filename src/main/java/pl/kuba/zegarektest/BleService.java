@@ -536,8 +536,7 @@ public class BleService extends Service {
             if (f.length() > 0) HistStore.putRecord(this, dKey, tKey, f);
         } catch (Exception ignored) { }
         if (fresh(dKey, tKey)) checkRecord(tKey, lastHr, sys, dia, spo2v, gluV);
-        main.removeCallbacks(hcSync);
-        main.postDelayed(hcSync, 30000);
+
         StringBuilder out = new StringBuilder(when).append("  tętno: ").append(hr.length() == 0 ? "brak" : hr);
         String tag = " (" + when + ")";
         if (bp != null) { out.append("  ciśnienie: ").append(bp); sBp = bp + tag; }

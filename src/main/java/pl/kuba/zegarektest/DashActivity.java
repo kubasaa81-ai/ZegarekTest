@@ -139,7 +139,9 @@ public class DashActivity extends Activity implements BleService.Listener {
         t.addView(sub);
         tileVal[i] = val;
         tileSub[i] = sub;
-        if (i == 3) t.setOnClickListener(v -> toggleHr());
+        final String[] metric = {"steps", "steps", "steps", "hr", "bp", "spo2", "temp", "glu", "resp", null};
+        if (metric[i] != null) t.setOnClickListener(v -> startActivity(
+                new Intent(this, DetailActivity.class).putExtra(DetailActivity.EXTRA, metric[i])));
         return t;
     }
 
@@ -172,7 +174,48 @@ public class DashActivity extends Activity implements BleService.Listener {
     private ChartView chSteps;
     private android.widget.EditText etGoalSteps, etGoalSleep;
     private int page = 0;
-    private TextView tvWrite, tvHc;
+    private TextView tvWrite, tvHc, tvWeek;
+    private ChartView chWeek;
+
+    private long daySteps(String dk) {
+        JSONObject o = HistStore.load(this, dk);
+        long sum = 0;
+        JSONObject recs = o.optJSONObject("r");
+        if (recs != null) {
+            Iterator<String> it = recs.keys();
+            while (it.hasNext()) { JSONObject r = recs.optJSONObject(it.next()); if (r != null) sum += r.optInt("st", 0); }
+        }
+        return Math.max(sum, o.optLong("steps", 0));
+    }
+
+    private void refreshWeek(int goal) {
+        Calendar c = Calendar.getInstance();
+        c.add(Calendar.DAY_OF_MONTH, -6);
+        String[] wd = {"nd", "pn", "wt", "śr", "cz", "pt", "sb"};
+        String[] lbl = new String[7];
+        List<float[]> pts = new ArrayList<>();
+        long top = 0, sum = 0;
+        int n = 0, hit = 0, streak = 0;
+        for (int i = 0; i < 7; i++, c.add(Calendar.DAY_OF_MONTH, 1)) {
+            lbl[i] = wd[c.get(Calendar.DAY_OF_WEEK) - 1];
+            long st = daySteps(new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.getTime()));
+            if (i == 6 && !BleService.sSteps.equals("–")) {
+                try { st = Math.max(st, Long.parseLong(BleService.sSteps)); } catch (Exception ignored) { }
+            }
+            if (st > 0) { pts.add(new float[]{i + 0.5f, st}); n++; sum += st; }
+            top = Math.max(top, st);
+            if (st >= goal) { hit++; streak++; } else if (i < 6) streak = 0;
+        }
+        chWeek.setSlots(lbl);
+        chWeek.setGoal(goal);
+        List<ChartView.Series> ls = new ArrayList<>();
+        ls.add(ChartView.series(pts, Color.parseColor("#2F80ED")));
+        chWeek.setData(ls, 0, Math.max(goal * 1.1f, top * 1.1f), "");
+        tvWeek.setText(n == 0 ? "Historia tygodnia zbiera się od dnia instalacji."
+                : "Średnio: " + (sum / n) + " kroków dziennie\nCel osiągnięty: " + hit + " z 7 dni"
+                + (streak > 1 ? "\n🔥 Seria: " + streak + " dni z rzędu" : "")
+                + "\nDotknij kafelka Kroki na Pulpicie, by zobaczyć miesiąc.");
+    }
 
     private void hcStatus() {
         if (!HcSync.available(this)) {
@@ -371,6 +414,12 @@ public class DashActivity extends Activity implements BleService.Listener {
         p1.addView(section("Kroki co 30 minut"));
         chSteps = chart(p1);
         chSteps.setBars(true);
+        p1.addView(section("Ostatnie 7 dni"));
+        chWeek = chart(p1);
+        chWeek.setBars(true);
+        tvWeek = card("");
+        tvWeek.setTextSize(14);
+        addCard(p1, tvWeek);
         p1.addView(section("Szczegóły"));
         tvSportList = card("");
         tvSportList.setTypeface(Typeface.MONOSPACE);
@@ -403,14 +452,6 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvWrite = card("");
         tvWrite.setTextSize(13);
         addCard(p2, tvWrite);
-        p2.addView(section("Samsung Health (przez Health Connect)"));
-        tvHc = card("");
-        tvHc.setTextSize(13);
-        addCard(p2, tvHc);
-        p2.addView(row(
-                btn("Połącz z Health Connect", "#0EA5A4", v -> hcConnect()),
-                btn("Wyślij dane teraz", "#2F80ED", v -> hcSend())
-        ));
         p2.addView(section("Połączenie"));
         p2.addView(row(
                 btn("Odśwież dane", "#00897B", v -> refreshWatch()),
@@ -613,9 +654,9 @@ public class DashActivity extends Activity implements BleService.Listener {
 
         String hrSub = hrN > 0 ? "śr. " + (hrSum / hrN) + "  min " + hrMin + "  max " + hrMax : "";
         if (today && BleService.sHr.contains("na żywo")) {
-            set(3, strip(BleService.sHr), "pomiar trwa – dotknij, by zatrzymać");
+            set(3, strip(BleService.sHr), "pomiar trwa");
         } else if (today) {
-            set(3, BleService.sHr.equals("–") ? "–" : strip(BleService.sHr), hrRunning ? "czekam na wynik…" : (hrSub.isEmpty() ? "dotknij, by zmierzyć" : hrSub + "\ndotknij, by zmierzyć"));
+            set(3, BleService.sHr.equals("–") ? "–" : strip(BleService.sHr), hrRunning ? "czekam na wynik…" : (hrSub.isEmpty() ? "dotknij – szczegóły" : hrSub + "\ndotknij – szczegóły"));
         } else {
             set(3, hrN > 0 ? String.valueOf(hrSum / hrN) : "–", hrSub);
         }
@@ -631,6 +672,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvScreen.setText("Podświetlenie:\n" + (screenWanted > 0 ? screenWanted + " s" : "–")
                 + (BleService.screenSec > 0 && BleService.screenSec != screenWanted ? "\n(w zegarku " + BleService.screenSec + " s)" : ""));
 
+        refreshWeek(goal);
         tvSportSum.setText("Kroki: " + steps + "   (cel " + goal + ", " + pct + "%)\nDystans: " + dist + "\nKalorie: " + kcal);
         List<float[]> bars = new ArrayList<>();
         StringBuilder list = new StringBuilder();
@@ -797,7 +839,6 @@ public class DashActivity extends Activity implements BleService.Listener {
         super.onResume();
         BleService.listener = this;
         refresh();
-        hcStatus();
     }
 
     @Override
