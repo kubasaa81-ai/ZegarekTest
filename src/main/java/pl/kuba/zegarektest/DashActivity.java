@@ -344,6 +344,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         return r;
     }
 
+    private TextView tvBatChip;
     private TextView tvHeroState, tvHeroBat, tvCalls, tvApps, tvBatOpt, tvMode;
 
     private LinearLayout group(LinearLayout p) {
@@ -505,9 +506,20 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvState.setTextSize(13);
         tvState.setTypeface(Typeface.DEFAULT_BOLD);
         tvState.setPadding(dp(12), dp(5), dp(12), dp(5));
+        LinearLayout chips0 = new LinearLayout(this);
+        chips0.setOrientation(LinearLayout.HORIZONTAL);
+        chips0.addView(tvState);
+        tvBatChip = new TextView(this);
+        tvBatChip.setTextSize(13);
+        tvBatChip.setTypeface(Typeface.DEFAULT_BOLD);
+        tvBatChip.setTextColor(Color.WHITE);
+        tvBatChip.setPadding(dp(12), dp(5), dp(12), dp(5));
+        LinearLayout.LayoutParams bc = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bc.setMargins(dp(8), 0, 0, 0);
+        chips0.addView(tvBatChip, bc);
         LinearLayout.LayoutParams chip = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         chip.setMargins(0, dp(8), 0, 0);
-        head.addView(tvState, chip);
+        head.addView(chips0, chip);
         outer.addView(head);
 
         sv = new ScrollView(this);
@@ -539,7 +551,8 @@ public class DashActivity extends Activity implements BleService.Listener {
                 btn("🩺 Zmierz teraz", "#E11D48", v -> startActivity(new Intent(this, MeasureActivity.class))),
                 btn("⏰ Przypomnienia", "#0D9488", v -> startActivity(new Intent(this, RemindActivity.class)))
         ));
-        for (int i = 0; i < 10; i += 2) p0.addView(row(tile(i), tile(i + 1)));
+        for (int i = 0; i < 8; i += 2) p0.addView(row(tile(i), tile(i + 1)));
+        p0.addView(row(tile(8)));
         p0.addView(section("Tętno w ciągu dnia"));
         chHr = chart(p0);
         p0.addView(section("Ciśnienie (skurczowe / rozkurczowe)"));
@@ -907,7 +920,16 @@ public class DashActivity extends Activity implements BleService.Listener {
         set(6, lastTemp != null ? lastTemp : "–", lastTemp != null ? "o " + tTemp : "");
         set(7, lastGlu != null ? lastGlu : "–", lastGlu != null ? "mmol/L o " + tGlu + " – orientacyjnie" : "");
         set(8, lastResp != null ? lastResp : "–", lastResp != null ? "o " + tResp : "");
-        set(9, today ? BleService.sBat : "–", today ? "" : "");
+        String bat = BleService.sBat;
+        int bp = -1;
+        try { bp = Integer.parseInt(bat.replaceAll("[^0-9]", "")); } catch (Exception ignored) { }
+        if (bp < 0 || bp > 100) {
+            tvBatChip.setVisibility(View.GONE);
+        } else {
+            tvBatChip.setVisibility(View.VISIBLE);
+            tvBatChip.setText((bp <= 15 ? "🪫 " : "🔋 ") + bp + "%");
+            tvBatChip.setBackground(round(Color.parseColor(bp > 30 ? "#3322C55E" : bp > 15 ? "#33FF9F1C" : "#66F43F5E"), 20));
+        }
         if (screenWanted == 0 && BleService.screenSec > 0) screenWanted = BleService.screenSec;
         sub(tvWrite, BleService.lastWrite.isEmpty()
                 ? (BleService.faceIdx >= 0 ? "Teraz: tarcza " + (BleService.faceIdx + 1) : "Dotknij numer tarczy")
