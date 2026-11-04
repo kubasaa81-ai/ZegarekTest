@@ -484,7 +484,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         ));
         p2.addView(row(
                 btn("Test wiadomości", "#7C3AED", v -> testMsg(0x01, "Mój Zegarek", "Test powiadomienia – działa! Zażółć gęślą jaźń")),
-                btn("Test połączenia", "#DB2777", v -> testMsg(0x00, "Test – dzwoni Ania", ""))
+                btn("Test połączenia", "#DB2777", v -> testMsg(0x00, "Ania Test", ""))
         ));
         p2.addView(section("Połączenie"));
         p2.addView(row(

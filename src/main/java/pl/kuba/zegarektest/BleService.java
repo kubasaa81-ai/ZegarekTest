@@ -585,7 +585,10 @@ public class BleService extends Service {
     public void sendMessage(int type, String name, String content) {
         if (name == null) name = "";
         if (content == null) content = "";
-        java.util.List<byte[]> n = chunks(name.replace('\n', ' '), 14, 2);
+        if (type == 0x00 && name.isEmpty()) name = content;
+        if (type == 0x00) content = "";
+        // połączenie: zegarek przyjmuje tylko jeden pakiet z nazwą (max 14 bajtów)
+        java.util.List<byte[]> n = chunks(name.replace('\n', ' '), 14, type == 0x00 ? 1 : 2);
         java.util.List<byte[]> c = chunks(content.replace('\n', ' '), 14, 10);
         int total = n.size() + c.size();
         if (total == 0) return;
