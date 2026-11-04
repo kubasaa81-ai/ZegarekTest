@@ -179,20 +179,31 @@ public class DashActivity extends Activity implements BleService.Listener {
             tvHc.setText("Health Connect nie jest dostępny na tym telefonie.");
             return;
         }
+        BleService.appendLog(this, "Health Connect: status " + HcSync.statusText(this));
+        HcSync.grantedText(this, t -> BleService.appendLog(this, "Health Connect: " + t));
         HcSync.checkGranted(this, ok -> {
             getSharedPreferences("hc", MODE_PRIVATE).edit().putBoolean("on", ok).apply();
             tvHc.setText(ok
                     ? "✅ Połączono. Dane z zegarka (kroki, tętno, ciśnienie, tlen, temperatura) wysyłają się automatycznie po każdym pobraniu historii.\nW Samsung Health włącz odczyt: Ustawienia → Health Connect → Mój Zegarek."
-                    : "Nie połączono. Stuknij „Połącz z Health Connect” i zaznacz wszystkie zgody.");
+                    : "Nie połączono. Stuknij „Połącz z Health Connect” i zaznacz wszystkie zgody.\nJeśli okno się nie otworzy: Ustawienia telefonu → Health Connect → Uprawnienia aplikacji → Mój Zegarek → Zezwól na wszystko.");
         });
     }
 
     private void hcConnect() {
         if (!HcSync.available(this)) { toast("Health Connect niedostępny"); return; }
         try {
-            startActivityForResult(HcSync.permissionIntent(this), 77);
+            Intent i = HcSync.permissionIntent(this);
+            BleService.appendLog(this, "Health Connect: otwieram okno zgód " + i.getAction() + " / " + i.getPackage());
+            startActivityForResult(i, 77);
         } catch (Exception e) {
-            toast("Nie udało się otworzyć Health Connect: " + e.getMessage());
+            BleService.appendLog(this, "Health Connect: nie otworzył się – " + e);
+            toast("Nie udało się otworzyć okna zgód – nadaj je ręcznie w Health Connect (opis poniżej)");
+            try {
+                startActivity(new Intent("android.health.connect.action.MANAGE_HEALTH_PERMISSIONS")
+                        .putExtra(Intent.EXTRA_PACKAGE_NAME, getPackageName()));
+            } catch (Exception e2) {
+                try { startActivity(new Intent("android.health.connect.action.HEALTH_HOME_SETTINGS")); } catch (Exception ignored) { }
+            }
         }
     }
 
@@ -206,6 +217,7 @@ public class DashActivity extends Activity implements BleService.Listener {
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
         if (req == 77) {
+            BleService.appendLog(this, "Health Connect: okno zgód zamknięte, kod " + res);
             hcStatus();
             tvHc.postDelayed(this::hcSend, 800);
         }

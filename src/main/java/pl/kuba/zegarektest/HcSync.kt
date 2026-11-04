@@ -44,6 +44,24 @@ object HcSync {
         HealthConnectClient.getSdkStatus(ctx) == HealthConnectClient.SDK_AVAILABLE
 
     @JvmStatic
+    fun statusText(ctx: Context): String = when (HealthConnectClient.getSdkStatus(ctx)) {
+        HealthConnectClient.SDK_AVAILABLE -> "dostępny"
+        HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> "wymaga aktualizacji"
+        else -> "niedostępny"
+    }
+
+    @JvmStatic
+    fun grantedText(ctx: Context, cb: Consumer<String>) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val t = try {
+                val g = HealthConnectClient.getOrCreate(ctx).permissionController.getGrantedPermissions()
+                "zgody: " + g.size + "/" + PERMS.size + (if (g.isEmpty()) "" else " (" + g.joinToString { it.substringAfterLast('.') } + ")")
+            } catch (e: Exception) { "błąd odczytu zgód: " + e.message }
+            main.post { cb.accept(t) }
+        }
+    }
+
+    @JvmStatic
     fun permissionIntent(ctx: Context): Intent =
         PermissionController.createRequestPermissionResultContract().createIntent(ctx, PERMS)
 
@@ -67,8 +85,10 @@ object HcSync {
         CoroutineScope(Dispatchers.IO).launch {
             val msg = try {
                 val client = HealthConnectClient.getOrCreate(app)
-                if (!client.permissionController.getGrantedPermissions().containsAll(PERMS)) {
-                    "Brak zgody – stuknij „Połącz z Health Connect”"
+                val granted = client.permissionController.getGrantedPermissions()
+                if (!granted.containsAll(PERMS)) {
+                    BleService.appendLog(app, "Health Connect: brak zgód, mam " + granted.size + "/" + PERMS.size)
+                    "Brak zgody (" + granted.size + "/" + PERMS.size + ") – nadaj je w Health Connect"
                 } else {
                     val today = LocalDate.now()
                     var n = 0

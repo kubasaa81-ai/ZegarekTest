@@ -708,7 +708,21 @@ public class BleService extends Service {
     public static void appendLog(Context c, String msg) {
         String line = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(new Date()) + "  " + msg;
         synchronized (LOCK) {
-            try (FileOutputStream fo = new FileOutputStream(logFile(c), true)) {
+            File lf = logFile(c);
+            if (lf.length() > 3_000_000) {
+                try {
+                    byte[] all = new byte[(int) lf.length()];
+                    try (FileInputStream fi = new FileInputStream(lf)) {
+                        int off = 0;
+                        while (off < all.length) { int r = fi.read(all, off, all.length - off); if (r < 0) break; off += r; }
+                    }
+                    int keep = 1_000_000;
+                    try (FileOutputStream fo = new FileOutputStream(lf, false)) {
+                        fo.write(all, all.length - keep, keep);
+                    }
+                } catch (Exception ignored) { }
+            }
+            try (FileOutputStream fo = new FileOutputStream(lf, true)) {
                 fo.write((line + "\n").getBytes(StandardCharsets.UTF_8));
             } catch (Exception ignored) { }
         }
