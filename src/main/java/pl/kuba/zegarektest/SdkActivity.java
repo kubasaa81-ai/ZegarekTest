@@ -160,6 +160,39 @@ public class SdkActivity extends Activity {
             vr.addView(btn(x[0], "#F59E0B", "#D97706", v -> setVolume(Integer.parseInt(x[1]))), lp);
         }
         add(p, vr);
+        TextView h1 = new TextView(this);
+        h1.setText("Przełącz tarczę (także dodane)");
+        h1.setTextSize(15);
+        h1.setTypeface(Typeface.DEFAULT_BOLD);
+        h1.setPadding(dp(8), dp(14), 0, dp(2));
+        p.addView(h1);
+        LinearLayout sw = new LinearLayout(this);
+        String[][] sws = {{"🖼️ Zdjęcie", "#DB2777"}, {"⬇️ Pobrana", "#7C3AED"}, {"⌚ Wbudowane", "#2563EB"}};
+        for (int k = 0; k < 3; k++) {
+            final int kk = k;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMargins(dp(3), 0, dp(3), 0);
+            sw.addView(btn(sws[k][0], sws[k][1], sws[k][1], v -> switchDial(kk)), lp);
+        }
+        add(p, sw);
+
+        TextView h2 = new TextView(this);
+        h2.setText("Wygląd tarczy ze zdjęcia");
+        h2.setTextSize(15);
+        h2.setTypeface(Typeface.DEFAULT_BOLD);
+        h2.setPadding(dp(8), dp(14), 0, dp(2));
+        p.addView(h2);
+        bPos = btn("", "#0EA5A4", "#0F766E", v -> { iPos = (iPos + 1) % POS.length; styleLabels(); });
+        bUp = btn("", "#F59E0B", "#D97706", v -> { iUp = (iUp + 1) % EL.length; styleLabels(); });
+        bDown = btn("", "#F59E0B", "#D97706", v -> { iDown = (iDown + 1) % EL.length; styleLabels(); });
+        bCol = btn("", "#334155", "#1E293B", v -> { iCol = (iCol + 1) % COL.length; styleLabels(); });
+        add(p, bPos);
+        add(p, bUp);
+        add(p, bDown);
+        add(p, bCol);
+        add(p, btn("✅  Zastosuj wygląd na zegarku", "#16A34A", "#15803D", v -> applyStyle()));
+        styleLabels();
+
         add(p, btn("↩️  Zakończ i wróć do zwykłego połączenia", "#64748B", "#475569", v -> finish()));
 
         pb = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -272,6 +305,57 @@ public class SdkActivity extends Activity {
     private void setTime() {
         if (!need()) return;
         VPOperateManager.getInstance().settingTime(wr, state -> out("🕒 Godzina ustawiona (odpowiedź " + state + ")"), now());
+    }
+
+    // ---------------- przełączanie i wygląd tarczy ----------------
+
+    private static final String[][] POS = {{"CENTER_CENTER", "środek"}, {"CENTER_TOP", "góra"}, {"CENTER_BOTTOM", "dół"},
+            {"LEFT_TOP", "lewa góra"}, {"RIGHT_TOP", "prawa góra"}, {"LEFT_BOTTOM", "lewy dół"}, {"RIGHT_BOTTOM", "prawy dół"}};
+    private static final String[][] EL = {{"DATE_STYLE_1", "data"}, {"DATE_STYLE_2", "data (styl 2)"}, {"BLUETOOTH_BATTERY", "bateria"},
+            {"STEP", "kroki"}, {"HEART", "tętno"}, {"KCAL", "kalorie"}, {"DISTANCE", "dystans"}, {"SLEEP", "sen"}, {"NONE", "nic"}};
+    private static final int[] COL = {0xFFFFFF, 0x000000, 0xFFD700, 0x00E5FF, 0xFF4081, 0x76FF03};
+    private static final String[] COLN = {"biały", "czarny", "złoty", "turkusowy", "różowy", "zielony"};
+    private int iPos = 0, iUp = 0, iDown = 2, iCol = 0;
+    private Button bPos, bUp, bDown, bCol;
+
+    private void styleLabels() {
+        bPos.setText("Godzina: " + POS[iPos][1]);
+        bUp.setText("Nad godziną: " + EL[iUp][1]);
+        bDown.setText("Pod godziną: " + EL[iDown][1]);
+        bCol.setText("Kolor napisów: " + COLN[iCol]);
+    }
+
+    private void applyStyle() {
+        if (!need()) return;
+        try {
+            com.veepoo.protocol.model.datas.UICustomSetData d = new com.veepoo.protocol.model.datas.UICustomSetData(false,
+                    com.veepoo.protocol.model.enums.EWatchUIElementPosition.valueOf(POS[iPos][0]),
+                    com.veepoo.protocol.model.enums.EWatchUIElementType.valueOf(EL[iUp][0]),
+                    com.veepoo.protocol.model.enums.EWatchUIElementType.valueOf(EL[iDown][0]), COL[iCol]);
+            VPOperateManager.getInstance().setCustomWacthUi(wr, d, info -> out("✅ Zegarek przyjął wygląd: " + info));
+            out("Wysłano wygląd: godzina " + POS[iPos][1] + ", nad: " + EL[iUp][1] + ", pod: " + EL[iDown][1] + ", kolor " + COLN[iCol]);
+        } catch (Throwable t) {
+            out("❌ Wygląd – błąd: " + t.getMessage());
+        }
+    }
+
+    private int sysIdx = 0;
+
+    private void switchDial(int kind) {
+        ensureJL(() -> {
+            try {
+                if (kind == 0) { JLWatchFaceManager.switch2PicDial(); out("Przełączam na tarczę ze zdjęcia"); }
+                else if (kind == 1) { JLWatchFaceManager.switch2ServerDial(); out("Przełączam na pobraną tarczę"); }
+                else {
+                    int n = Math.max(1, systemDials);
+                    JLWatchFaceManager.switch2SystemDial(sysIdx % n);
+                    out("Przełączam na wbudowaną tarczę " + (sysIdx % n + 1) + " z " + n + " (stuknij znowu – następna)");
+                    sysIdx++;
+                }
+            } catch (Throwable t) {
+                out("❌ Przełączanie – błąd: " + t.getMessage());
+            }
+        });
     }
 
     // ---------------- wibracja i głośność ----------------
@@ -401,9 +485,26 @@ public class SdkActivity extends Activity {
 
     private boolean stepDone = false;
 
+    private Runnable afterJL = null;
+    private int systemDials = 0;
+    private boolean jlReady = false;
+
+    private void ensureJL(Runnable then) {
+        if (!need()) return;
+        if (jlReady) { then.run(); return; }
+        afterJL = then;
+        startJL();
+    }
+
     private void sendPhotoDial() {
         pb.setVisibility(View.VISIBLE);
         pb.setProgress(0);
+        if (jlReady) { uploadPhoto(); return; }
+        afterJL = this::uploadPhoto;
+        startJL();
+    }
+
+    private void startJL() {
         if (VPOperateManager.getInstance().isJLNotifyOpened()) {
             out("Kanał tarcz już otwarty");
             auth();
@@ -458,16 +559,19 @@ public class SdkActivity extends Activity {
                 if (fsDone) return;
                 fsDone = true;
                 out("Tarcze w zegarku: wbudowane " + (sys == null ? 0 : sys.size()) + ", pobrane " + (srv == null ? 0 : srv.size()));
-                main.post(() -> uploadPhoto());
+                systemDials = sys == null ? 0 : sys.size();
+                jlReady = true;
+                main.post(() -> { if (afterJL != null) afterJL.run(); });
             }
             @Override public void onWatchDialInfoGetFailed(com.jieli.jl_rcsp.model.base.BaseError e) {
                 if (fsDone) return;
                 fsDone = true;
-                out("Lista tarcz niedostępna (" + e + ") – wysyłam mimo to");
-                main.post(() -> uploadPhoto());
+                out("Lista tarcz niedostępna (" + e + ") – próbuję dalej");
+                jlReady = true;
+                main.post(() -> { if (afterJL != null) afterJL.run(); });
             }
         });
-        main.postDelayed(() -> { if (!fsDone) { fsDone = true; out("Brak listy tarcz – wysyłam mimo to"); uploadPhoto(); } }, 12000);
+        main.postDelayed(() -> { if (!fsDone) { fsDone = true; jlReady = true; out("Brak listy tarcz – próbuję dalej"); if (afterJL != null) afterJL.run(); } }, 12000);
     }
 
     private void uploadPhoto() {
