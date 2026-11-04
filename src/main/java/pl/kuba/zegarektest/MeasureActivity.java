@@ -16,11 +16,6 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import com.veepoo.protocol.listener.data.IECGDetectListener;
-import com.veepoo.protocol.model.datas.EcgDetectInfo;
-import com.veepoo.protocol.model.datas.EcgDetectResult;
-import com.veepoo.protocol.model.datas.EcgDetectState;
-import com.veepoo.protocol.model.datas.EcgDiagnosis;
 import com.veepoo.protocol.model.enums.EBPDetectModel;
 
 import org.json.JSONObject;
@@ -29,7 +24,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-/** Pomiar na żądanie: ciśnienie, tlen, tętno, EKG. */
+/** Pomiar na żądanie: ciśnienie, tlen, tętno, temperatura. */
 public class MeasureActivity extends Activity {
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -115,7 +110,7 @@ public class MeasureActivity extends Activity {
         p.addView(r1);
         LinearLayout r2 = new LinearLayout(this);
         r2.addView(btn("❤️ Tętno", "#DB2777", "#9D174D", v -> start(2)), lp(1));
-        r2.addView(btn("📈 EKG", "#7C3AED", "#5B21B6", v -> start(3)), lp(1));
+        r2.addView(btn("🌡️ Temperatura", "#F59E0B", "#B45309", v -> start(3)), lp(1));
         p.addView(r2);
 
         LinearLayout card = new LinearLayout(this);
@@ -169,6 +164,7 @@ public class MeasureActivity extends Activity {
     private final Runnable timeout = () -> {
         if (kind == 2 && lastHr > 0) { save(); tvInfo.setText("✅ Gotowe"); }
         else if (kind == 1 && lastO2 > 0) { save(); tvInfo.setText("✅ Gotowe"); }
+        else if (kind == 3 && lastT > 0) { saveTemp(); tvInfo.setText("✅ Gotowe"); }
         else tvInfo.setText("⏳ Zegarek nie podał wyniku – popraw zegarek na ręce i spróbuj jeszcze raz.");
         stop();
     };
@@ -184,6 +180,7 @@ public class MeasureActivity extends Activity {
         kind = k;
         saved = false;
         lastHr = lastO2 = 0;
+        lastT = 0;
         tvBig.setText("…");
         pb.setProgress(0);
         pb.setVisibility(View.VISIBLE);
@@ -223,42 +220,46 @@ public class MeasureActivity extends Activity {
                 });
                 main.postDelayed(timeout, 30000);
             } else {
-                tvInfo.setText("EKG: połóż palec drugiej ręki na zegarku i trzymaj (ok. 1 min)");
-                Sdk.m().startDetectECG(code -> { }, true, ecg);
-                main.postDelayed(timeout, 120000);
+                tvInfo.setText("Mierzę temperaturę… (ok. 1 min)");
+                Sdk.m().startDetectTempture(Sdk.wr, temp);
+                main.postDelayed(timeout, 90000);
             }
         } catch (Throwable t) {
-            tvInfo.setText("❌ Zegarek nie obsługuje tego pomiaru (" + t.getClass().getSimpleName() + ")");
+            tvInfo.setText("❌ Ten zegarek nie obsługuje tego pomiaru.");
+            tvBig.setText("–");
+            pb.setVisibility(View.GONE);
             kind = -1;
             bStop.setVisibility(View.GONE);
         }
     }
 
-    private final IECGDetectListener ecg = new IECGDetectListener() {
-        @Override public void onEcgDetectInfoChange(EcgDetectInfo i) { }
+    private float lastT = 0;
 
-        @Override
-        public void onEcgDetectStateChange(EcgDetectState s) {
-            prog(s.getProgress());
-            if (s.getHr1() > 0) { lastHr = s.getHr1(); big(s.getHr1() + " ♥"); }
-            if (s.getWear() != 0 && s.getProgress() == 0) info("Dotknij zegarka palcem drugiej ręki");
+    private final com.veepoo.protocol.listener.data.ITemptureDetectDataListener temp = d -> {
+        prog(d.getProgress());
+        if (d.getTempture() > 20 && d.getTempture() < 45) {
+            lastT = d.getTempture();
+            big(String.format(Locale.US, "%.1f °C", lastT));
         }
-
-        @Override
-        public void onEcgDetectResultChange(EcgDetectResult r) {
-            main.post(() -> {
-                if (r.getAveHeart() > 0) lastHr = r.getAveHeart();
-                tvBig.setText(lastHr > 0 ? lastHr + " ♥" : "–");
-                tvInfo.setText(String.format(Locale.US, "✅ EKG: tętno %d, HRV %d, QT %d ms, oddech %d/min",
-                        r.getAveHeart(), r.getAveHrv(), r.getAveQT(), r.getAveResRate()));
-                save();
-                stop();
-            });
-        }
-
-        @Override public void onEcgDetectDiagnosisChange(EcgDiagnosis d) { }
-        @Override public void onEcgADCChange(int[] a, int[] b) { }
+        if (d.getProgress() >= 100 && lastT > 0) main.post(() -> { saveTemp(); tvInfo.setText("✅ Temperatura – zapisano"); stop(); });
     };
+
+    private void saveTemp() {
+        if (saved) return;
+        saved = true;
+        try {
+            JSONObject f = new JSONObject();
+            f.put("temp", Math.round(lastT * 10) / 10.0);
+            HistStore.putRecord(this, BleService.today(), now(), f);
+            HistStore.flush();
+        } catch (Exception ignored) { }
+        BleService.sTemp = String.format(Locale.US, "%.1f °C (pomiar %s)", lastT, now());
+        BleService s = BleService.instance;
+        if (s != null) s.notifyUi();
+        if (lastT >= BleService.th(this, "tempHi") && s != null)
+            s.alarm("tempHi", String.format(Locale.US, "Wysoka temperatura: %.1f °C", lastT), false);
+        tvLog.append(String.format(Locale.US, "\n• %s  temperatura %.1f °C", now(), lastT));
+    }
 
     private void stop() {
         main.removeCallbacks(timeout);
@@ -266,7 +267,7 @@ public class MeasureActivity extends Activity {
             if (kind == 0) Sdk.m().stopDetectBP(Sdk.wr, EBPDetectModel.DETECT_MODEL_PUBLIC);
             else if (kind == 1) Sdk.m().stopDetectSPO2H(Sdk.wr, d -> { });
             else if (kind == 2) Sdk.m().stopDetectHeart(Sdk.wr);
-            else if (kind == 3) Sdk.m().stopDetectECG(code -> { }, true, ecg);
+            else if (kind == 3) Sdk.m().stopDetectTempture(Sdk.wr, temp);
         } catch (Throwable ignored) { }
         kind = -1;
         bStop.setVisibility(View.GONE);

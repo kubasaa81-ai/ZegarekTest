@@ -202,7 +202,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         BleService s = BleService.instance;
         if (s == null) { toast("Brak połączenia z zegarkiem"); return; }
         s.sendMessage(type, name, content);
-        if (type == 0x00) tvNotif.postDelayed(() -> { BleService b = BleService.instance; if (b != null) b.stopCall(); }, 10000);
+        if (type == 0x00) tvState.postDelayed(() -> { BleService b = BleService.instance; if (b != null) b.stopCall(); }, 10000);
         toast(type == 0x00 ? "Zegarek powinien dzwonić ok. 10 s" : "Wysłano – spójrz na zegarek");
     }
 
@@ -211,12 +211,15 @@ public class DashActivity extends Activity implements BleService.Listener {
                 && checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED;
         boolean contacts = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
         boolean apps = NotifService.enabled(this);
-        tvNotif.setText((calls ? "✅" : "⬜") + "  Połączenia – kto dzwoni" + (calls && !contacts ? " (bez kontaktów: sam numer)" : "")
-                + "\n" + (apps ? "✅" : "⬜") + "  SMS, WhatsApp, Messenger i inne aplikacje"
-                + "\n" + "✅  Alarmy zdrowia jako napis „ALARM”"
-
-                + (apps ? "\n\nWyłącz powiadomienia w HBand albo ją odinstaluj, żeby nie przychodziły podwójnie." : ""));
+        sub(tvCalls, calls ? (contacts ? "✅ Włączone – imię z kontaktów" : "✅ Włączone (bez kontaktów: sam numer)") : "⬜ Wyłączone – dotknij, by włączyć");
+        sub(tvApps, apps ? "✅ Włączone" : "⬜ Wyłączone – dotknij, by włączyć");
+        tvNotif.setText(apps ? "Wyłącz powiadomienia w HBand albo ją odinstaluj, żeby nie przychodziły podwójnie." : "");
+        tvNotif.setVisibility(apps ? View.VISIBLE : View.GONE);
+        PowerManager pm = getSystemService(PowerManager.class);
+        boolean unl = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+        sub(tvBatOpt, unl ? "✅ Ustawione – Android nie usypia połączenia" : "⚠️ Dotknij – inaczej telefon może zrywać połączenie");
     }
+
     private ChartView chWeek;
 
     private long daySteps(String dk) {
@@ -339,6 +342,98 @@ public class DashActivity extends Activity implements BleService.Listener {
         l2.setMargins(dp(4), dp(4), dp(4), dp(4));
         r.addView(next, l2);
         return r;
+    }
+
+    private TextView tvHeroState, tvHeroBat, tvCalls, tvApps, tvBatOpt, tvMode;
+
+    private LinearLayout group(LinearLayout p) {
+        LinearLayout g = new LinearLayout(this);
+        g.setOrientation(LinearLayout.VERTICAL);
+        g.setBackground(round(Color.WHITE, 22));
+        g.setElevation(dp(2));
+        g.setPadding(0, dp(4), 0, dp(4));
+        addCard(p, g);
+        return g;
+    }
+
+    private void divider(LinearLayout g) {
+        View d = new View(this);
+        d.setBackgroundColor(Color.parseColor("#EEF1F6"));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+        lp.setMargins(dp(66), 0, dp(14), 0);
+        g.addView(d, lp);
+    }
+
+    /** Wiersz: kolorowa ikona, tytuł, podpis. Zwraca wiersz; podpis w getTag(). */
+    private LinearLayout rowBox(LinearLayout g, String ico, String color, String title) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(14), dp(12), dp(14), dp(12));
+        r.setMinimumHeight(dp(64));
+        TextView ic = new TextView(this);
+        ic.setText(ico);
+        ic.setTextSize(19);
+        ic.setGravity(Gravity.CENTER);
+        ic.setBackground(grad(color, darker(color), 14));
+        r.addView(ic, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(12), 0, dp(8), 0);
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextSize(16);
+        t.setTextColor(Color.parseColor("#0F172A"));
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        col.addView(t);
+        TextView sub = new TextView(this);
+        sub.setTextSize(13);
+        sub.setTextColor(Color.parseColor("#64748B"));
+        col.addView(sub);
+        r.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        r.setTag(sub);
+        g.addView(r);
+        return r;
+    }
+
+    private TextView setRow(LinearLayout g, String ico, String color, String title, String sub, View.OnClickListener l) {
+        if (g.getChildCount() > 0) divider(g);
+        LinearLayout r = rowBox(g, ico, color, title);
+        TextView s = (TextView) r.getTag();
+        s.setText(sub);
+        if (sub.isEmpty()) s.setVisibility(View.GONE);
+        TextView ch = new TextView(this);
+        ch.setText("›");
+        ch.setTextSize(24);
+        ch.setTextColor(Color.parseColor("#94A3B8"));
+        r.addView(ch);
+        android.util.TypedValue tv = new android.util.TypedValue();
+        getTheme().resolveAttribute(android.R.attr.selectableItemBackground, tv, true);
+        r.setForeground(getDrawable(tv.resourceId));
+        r.setOnClickListener(l);
+        return s;
+    }
+
+    private TextView stepBtn(String t, View.OnClickListener l) {
+        TextView b = new TextView(this);
+        b.setText(t);
+        b.setTextSize(20);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setGravity(Gravity.CENTER);
+        b.setTextColor(Color.parseColor("#B45309"));
+        b.setBackground(round(Color.parseColor("#FEF3C7"), 19));
+        b.setOnClickListener(l);
+        return b;
+    }
+
+    private void sub(TextView t, String s) {
+        if (t == null) return;
+        t.setText(s);
+        t.setVisibility(s.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private void modeLabel() {
+        sub(tvMode, BleService.useSdk(this) ? "Jedno połączenie (zalecane) ✓ · dotknij, by zmienić" : "Stare połączenie · dotknij, by włączyć zalecane");
     }
 
     private TextView card(String txt) {
@@ -478,89 +573,135 @@ public class DashActivity extends Activity implements BleService.Listener {
 
         // ---- Urządzenie ----
         LinearLayout p2 = page();
-        p2.addView(section("Czas podświetlenia ekranu"));
-        tvScreen = new TextView(this);
-        tvScreen.setTextSize(16);
-        tvScreen.setGravity(Gravity.CENTER);
-        tvScreen.setTextColor(Color.parseColor("#263238"));
-        tvScreen.setPadding(0, dp(10), 0, dp(10));
-        tvScreen.setBackground(round(Color.WHITE, 14));
-        p2.addView(row(
-                btn("− 1 s", "#78909C", v -> changeScreen(-1)),
-                tvScreen,
-                btn("+ 1 s", "#78909C", v -> changeScreen(1))
-        ));
-        p2.addView(row(btn("Zapisz w zegarku", "#6A1B9A", v -> saveScreen())));
+
+        // karta zegarka
+        LinearLayout hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.HORIZONTAL);
+        hero.setGravity(Gravity.CENTER_VERTICAL);
+        hero.setPadding(dp(18), dp(18), dp(18), dp(18));
+        hero.setBackground(grad("#4F46E5", "#7C3AED", 26));
+        hero.setElevation(dp(4));
+        TextView watchIco = new TextView(this);
+        watchIco.setText("⌚");
+        watchIco.setTextSize(40);
+        watchIco.setGravity(Gravity.CENTER);
+        watchIco.setBackground(round(Color.parseColor("#26FFFFFF"), 40));
+        hero.addView(watchIco, new LinearLayout.LayoutParams(dp(74), dp(74)));
+        LinearLayout hcol = new LinearLayout(this);
+        hcol.setOrientation(LinearLayout.VERTICAL);
+        hcol.setPadding(dp(16), 0, 0, 0);
+        TextView hName = new TextView(this);
+        hName.setText("JS300");
+        hName.setTextSize(22);
+        hName.setTypeface(Typeface.DEFAULT_BOLD);
+        hName.setTextColor(Color.WHITE);
+        hcol.addView(hName);
+        tvHeroState = new TextView(this);
+        tvHeroState.setTextSize(14);
+        tvHeroState.setTextColor(Color.parseColor("#E0E7FF"));
+        hcol.addView(tvHeroState);
+        tvHeroBat = new TextView(this);
+        tvHeroBat.setTextSize(14);
+        tvHeroBat.setTextColor(Color.WHITE);
+        tvHeroBat.setPadding(0, dp(4), 0, 0);
+        hcol.addView(tvHeroBat);
+        hero.addView(hcol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        addCard(p2, hero);
+
+        // Zdrowie
         p2.addView(section("Zdrowie"));
-        p2.addView(row(
-                btn("🩺 Zmierz teraz", "#E11D48", v -> startActivity(new Intent(this, MeasureActivity.class))),
-                btn("⏰ Przypomnienia", "#0D9488", v -> startActivity(new Intent(this, RemindActivity.class)))
-        ));
-        p2.addView(section("Tarcza i ustawienia zegarka"));
-        p2.addView(row(btn("⌚ Tarcza ze zdjęcia, wygląd, język, głośność", "#4F46E5", v -> startActivity(new Intent(this, SdkActivity.class)))));
-        p2.addView(section("Tarcza zegarka"));
-        p2.addView(row(
-                btn("1", "#3949AB", v -> setFace(0)),
-                btn("2", "#5E35B1", v -> setFace(1)),
-                btn("3", "#8E24AA", v -> setFace(2)),
-                btn("4", "#C2185B", v -> setFace(3))
-        ));
-        p2.addView(row(btn("📳 Znajdź zegarek (wibracja)", "#F4511E", v -> { send(0xB5, 0x0A, 0x01); toast("Zegarek powinien zawibrować"); })));
-        tvWrite = card("");
-        tvWrite.setTextSize(13);
-        addCard(p2, tvWrite);
+        LinearLayout gH = group(p2);
+        setRow(gH, "🩺", "#E11D48", "Zmierz teraz", "Ciśnienie, tlen, tętno, temperatura",
+                v -> startActivity(new Intent(this, MeasureActivity.class)));
+        setRow(gH, "⏰", "#0D9488", "Przypomnienia", "Ruch, woda, leki",
+                v -> startActivity(new Intent(this, RemindActivity.class)));
+
+        // Zegarek
+        p2.addView(section("Zegarek"));
+        LinearLayout gW = group(p2);
+        setRow(gW, "🖼️", "#4F46E5", "Tarcza ze zdjęcia i wygląd", "Zdjęcie, data, bateria, kolor, język, głośność",
+                v -> startActivity(new Intent(this, SdkActivity.class)));
+        LinearLayout faceRow = rowBox(gW, "🎨", "#8E24AA", "Tarcze wbudowane");
+        tvWrite = (TextView) faceRow.getTag();
+        LinearLayout chips = new LinearLayout(this);
+        String[] fc = {"#3949AB", "#5E35B1", "#8E24AA", "#C2185B"};
+        for (int k = 0; k < 4; k++) {
+            final int kk = k;
+            TextView c = new TextView(this);
+            c.setText(String.valueOf(k + 1));
+            c.setTextSize(15);
+            c.setTypeface(Typeface.DEFAULT_BOLD);
+            c.setTextColor(Color.WHITE);
+            c.setGravity(Gravity.CENTER);
+            c.setBackground(round(Color.parseColor(fc[k]), 18));
+            c.setOnClickListener(v -> setFace(kk));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(38), dp(38));
+            lp.setMargins(dp(3), 0, 0, 0);
+            chips.addView(c, lp);
+        }
+        faceRow.addView(chips);
+        divider(gW);
+        LinearLayout scrRow = rowBox(gW, "💡", "#F59E0B", "Podświetlenie ekranu");
+        tvScreen = (TextView) scrRow.getTag();
+        LinearLayout stepper = new LinearLayout(this);
+        stepper.setGravity(Gravity.CENTER_VERTICAL);
+        TextView minus = stepBtn("−", v -> changeScreen(-1));
+        TextView plus = stepBtn("+", v -> changeScreen(1));
+        stepper.addView(minus, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(dp(38), dp(38));
+        pl.setMargins(dp(6), 0, 0, 0);
+        stepper.addView(plus, pl);
+        scrRow.addView(stepper);
+        divider(gW);
+        setRow(gW, "📳", "#F4511E", "Znajdź zegarek", "Zegarek zawibruje",
+                v -> { send(0xB5, 0x0A, 0x01); toast("Zegarek powinien zawibrować"); });
+
+        // Powiadomienia
         p2.addView(section("Powiadomienia na zegarek"));
-        tvNotif = card("");
-        tvNotif.setTextSize(13);
-        tvNotif.setOnClickListener(v -> {
-            boolean on = getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("wibracja", true);
-            getSharedPreferences("powiad", MODE_PRIVATE).edit().putBoolean("wibracja", !on).apply();
-            notifStatus();
+        LinearLayout gN = group(p2);
+        tvCalls = setRow(gN, "📞", "#16A34A", "Kto dzwoni", "", v -> requestPermissions(new String[]{
+                Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS}, 5));
+        tvApps = setRow(gN, "💬", "#2563EB", "SMS, WhatsApp, Messenger i inne", "", v -> {
+            try { startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
+            catch (Exception e) { toast("Otwórz: Ustawienia → Powiadomienia → Dostęp do powiadomień"); }
         });
-        addCard(p2, tvNotif);
-        p2.addView(row(
-                btn("📞 Kto dzwoni – włącz", "#16A34A", v -> requestPermissions(new String[]{
-                        Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS}, 5)),
-                btn("💬 Powiadomienia – włącz", "#2563EB", v -> {
-                    try { startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
-                    catch (Exception e) { toast("Otwórz: Ustawienia → Powiadomienia → Dostęp do powiadomień"); }
-                })
-        ));
-        p2.addView(row(
-                btn("Test wiadomości", "#7C3AED", v -> testMsg(0x01, "Mój Zegarek", "Test powiadomienia – działa! Zażółć gęślą jaźń")),
-                btn("Test alarmu na zegarku", "#DB2777", v -> {
-                    BleService b = BleService.instance;
-                    if (b == null) { toast("Brak połączenia z zegarkiem"); return; }
-                    b.alarm("test", "Test: wysokie ciśnienie 150/95", true);
-                    toast("Na zegarku powinien pojawić się napis ALARM");
-                })
-        ));
+        setRow(gN, "🔔", "#7C3AED", "Wyślij test powiadomienia", "Sprawdź, czy napis pojawi się na zegarku",
+                v -> testMsg(0x01, "Mój Zegarek", "Test powiadomienia – działa! Zażółć gęślą jaźń"));
+        setRow(gN, "🚨", "#DB2777", "Test alarmu zdrowia", "Na zegarku pojawi się napis ALARM", v -> {
+            BleService b = BleService.instance;
+            if (b == null) { toast("Brak połączenia z zegarkiem"); return; }
+            b.alarm("test", "Test: wysokie ciśnienie 150/95", true);
+            toast("Na zegarku powinien pojawić się napis ALARM");
+        });
+        tvNotif = new TextView(this);
+        tvNotif.setTextSize(12);
+        tvNotif.setTextColor(Color.parseColor("#64748B"));
+        tvNotif.setPadding(dp(12), dp(6), dp(12), 0);
+        p2.addView(tvNotif);
+
+        // Połączenie
         p2.addView(section("Połączenie"));
-        p2.addView(row(
-                btn("Odśwież dane", "#00897B", v -> refreshWatch()),
-                btn("Połącz ponownie", "#2E7D32", v -> { stopBle(); tvState.postDelayed(this::startBle, 1500); })
-        ));
-        p2.addView(row(
-                btn("Bateria bez limitu", "#EF6C00", v -> askBattery()),
-                btn("Tryb testowy", "#455A64", v -> startActivity(new Intent(this, MainActivity.class)))
-        ));
-        Button bMode = btn("", "#334155", v -> { });
-        Runnable modeLabel = () -> bMode.setText(BleService.useSdk(this)
-                ? "Tryb: jedno połączenie (biblioteka producenta) ✓\nDotknij, by wrócić do starego"
-                : "Tryb: stare połączenie\nDotknij, by włączyć jedno połączenie (zalecane)");
-        modeLabel.run();
-        bMode.setOnClickListener(v -> {
+        LinearLayout gC = group(p2);
+        setRow(gC, "🔄", "#00897B", "Odśwież dane", "Kroki, bateria i historia z zegarka", v -> refreshWatch());
+        setRow(gC, "🔗", "#2E7D32", "Połącz ponownie", "Gdy coś przestało działać",
+                v -> { stopBle(); tvState.postDelayed(this::startBle, 1500); });
+        tvBatOpt = setRow(gC, "🔋", "#EF6C00", "Bateria bez limitu", "", v -> askBattery());
+        tvMode = setRow(gC, "⚙️", "#334155", "Tryb połączenia", "", v -> {
             getSharedPreferences("ust", MODE_PRIVATE).edit().putBoolean("sdk", !BleService.useSdk(this)).apply();
-            modeLabel.run();
+            modeLabel();
             stopBle();
             tvState.postDelayed(this::startBle, 2500);
             toast("Łączę ponownie w nowym trybie…");
         });
-        p2.addView(row(bMode));
-        TextView info = card("Godzina i data ustawiają się same przy każdym połączeniu, a sen pobiera się sam każdego ranka.");
-        info.setTextSize(13);
-        info.setTextColor(Color.parseColor("#607D8B"));
-        addCard(p2, info);
+        setRow(gC, "🛠️", "#64748B", "Tryb testowy", "Log połączenia (do wysłania w razie problemu)",
+                v -> startActivity(new Intent(this, MainActivity.class)));
+        modeLabel();
+        TextView info = new TextView(this);
+        info.setText("Godzina i data ustawiają się same przy każdym połączeniu, a sen pobiera się sam każdego ranka.");
+        info.setTextSize(12);
+        info.setTextColor(Color.parseColor("#64748B"));
+        info.setPadding(dp(12), dp(8), dp(12), dp(8));
+        p2.addView(info);
         pages[2] = p2;
 
         // ---- Profil ----
@@ -768,10 +909,14 @@ public class DashActivity extends Activity implements BleService.Listener {
         set(8, lastResp != null ? lastResp : "–", lastResp != null ? "o " + tResp : "");
         set(9, today ? BleService.sBat : "–", today ? "" : "");
         if (screenWanted == 0 && BleService.screenSec > 0) screenWanted = BleService.screenSec;
-        tvWrite.setText((BleService.faceIdx >= 0 ? "Aktualna tarcza: " + (BleService.faceIdx + 1) + "\n" : "")
-                + (BleService.lastWrite.isEmpty() ? "Tu pojawi się potwierdzenie z zegarka." : BleService.lastWrite));
-        tvScreen.setText("Podświetlenie:\n" + (screenWanted > 0 ? screenWanted + " s" : "–")
-                + (BleService.screenSec > 0 && BleService.screenSec != screenWanted ? "\n(w zegarku " + BleService.screenSec + " s)" : ""));
+        sub(tvWrite, BleService.lastWrite.isEmpty()
+                ? (BleService.faceIdx >= 0 ? "Teraz: tarcza " + (BleService.faceIdx + 1) : "Dotknij numer tarczy")
+                : BleService.lastWrite);
+        sub(tvScreen, (screenWanted > 0 ? screenWanted + " s" : "–")
+                + (BleService.screenSec > 0 && BleService.screenSec != screenWanted ? "  ·  zapisuję…" : (BleService.screenSec > 0 ? "  ·  w zegarku ✓" : "")));
+        tvHeroState.setText((conn ? "● Połączony" : wait ? "◌ Czekam na zegarek…" : "○ " + st)
+                + (conn && !Sdk.version.isEmpty() && !Sdk.version.equals("null") ? "  ·  wersja " + Sdk.version : ""));
+        tvHeroBat.setText(BleService.sBat.equals("–") ? "🔋 bateria: –" : "🔋 bateria: " + BleService.sBat);
 
         refreshWeek(goal);
         tvSportSum.setText("Kroki: " + steps + "   (cel " + goal + ", " + pct + "%)\nDystans: " + dist + "\nKalorie: " + kcal);
@@ -866,7 +1011,11 @@ public class DashActivity extends Activity implements BleService.Listener {
         if (screenWanted == 0) screenWanted = BleService.screenSec > 0 ? BleService.screenSec : 10;
         screenWanted = Math.max(5, Math.min(60, screenWanted + d));
         refresh();
+        tvState.removeCallbacks(screenSaver);
+        tvState.postDelayed(screenSaver, 1500);
     }
+
+    private final Runnable screenSaver = this::saveScreen;
 
     private void saveScreen() {
         if (screenWanted < 5) { toast("Najpierw wybierz czas"); return; }
