@@ -345,6 +345,80 @@ public class DashActivity extends Activity implements BleService.Listener {
     }
 
     private TextView tvBatChip;
+    private LinearLayout dialChips;
+    private String dialMsg = "";
+
+    private TextView dialChip(String text, String color, boolean sel, View.OnClickListener l) {
+        TextView c = new TextView(this);
+        c.setText(text);
+        c.setTextSize(15);
+        c.setTypeface(Typeface.DEFAULT_BOLD);
+        c.setTextColor(Color.WHITE);
+        c.setGravity(Gravity.CENTER);
+        c.setPadding(dp(14), 0, dp(14), 0);
+        c.setMinWidth(dp(44));
+        GradientDrawable g = grad(color, darker(color), 22);
+        if (sel) g.setStroke(dp(3), Color.parseColor("#FBBF24"));
+        c.setBackground(g);
+        c.setOnClickListener(l);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
+        lp.setMargins(0, 0, dp(6), 0);
+        dialChips.addView(c, lp);
+        return c;
+    }
+
+    private void buildDialChips() {
+        if (dialChips == null) return;
+        dialChips.removeAllViews();
+        String cur = Dials.current;
+        if (Dials.loaded) {
+            for (int k = 0; k < Dials.sys.size(); k++) {
+                final int kk = k;
+                dialChip(String.valueOf(k + 1), "#3949AB", cur.equals("s" + k), v -> pickDial('s', kk, "wbudowana " + (kk + 1)));
+            }
+            for (int k = 0; k < Dials.srv.size(); k++) {
+                final int kk = k;
+                dialChip("⬇️ " + Dials.label(Dials.srv.get(k), k), "#7C3AED", cur.equals("w" + k), v -> pickDial('w', kk, "wgrana " + (kk + 1)));
+            }
+            if (Dials.hasPic) dialChip("🖼️ Zdjęcie", "#DB2777", cur.equals("p"), v -> pickDial('p', 0, "ze zdjęcia"));
+        } else {
+            for (int k = 0; k < 4; k++) {
+                final int kk = k;
+                dialChip(String.valueOf(k + 1), "#3949AB", BleService.faceIdx == k, v -> setFace(kk));
+            }
+            dialChip("🖼️ Zdjęcie", "#DB2777", false, v -> pickDial('p', 0, "ze zdjęcia"));
+        }
+    }
+
+    private void loadDials(boolean force) {
+        if (!Sdk.ready) { if (force) toast("Zegarek nie jest teraz połączony"); return; }
+        if (Dials.loaded && !force) return;
+        if (force) Dials.reset();
+        dialMsg = "Wczytuję tarcze z zegarka…";
+        refresh();
+        Dials.load(x -> BleService.appendLog(this, "Tarcze: " + x), () -> {
+            dialMsg = Dials.loaded
+                    ? "Wbudowane: " + Dials.sys.size() + " · wgrane: " + Dials.srv.size() + (Dials.hasPic ? " · ze zdjęcia" : "")
+                    : "Nie udało się wczytać listy – dotknij ↻";
+            buildDialChips();
+            refresh();
+        });
+    }
+
+    private void pickDial(char kind, int idx, String name) {
+        if (!Sdk.ready) { toast("Zegarek nie jest teraz połączony"); return; }
+        if (!Dials.loaded) {
+            toast("Wczytuję tarcze…");
+            Dials.load(x -> { }, () -> { buildDialChips(); if (Dials.loaded) pickDial(kind, idx, name); });
+            return;
+        }
+        if (Dials.select(kind, idx)) {
+            dialMsg = "Teraz: tarcza " + name;
+            toast("Zmieniam tarczę: " + name);
+        } else toast("Nie udało się zmienić tarczy");
+        buildDialChips();
+        refresh();
+    }
     private TextView tvHeroState, tvHeroBat, tvCalls, tvApps, tvBatOpt, tvMode;
 
     private LinearLayout group(LinearLayout p) {
@@ -634,25 +708,19 @@ public class DashActivity extends Activity implements BleService.Listener {
         LinearLayout gW = group(p2);
         setRow(gW, "🖼️", "#4F46E5", "Tarcza ze zdjęcia i wygląd", "Zdjęcie, data, bateria, kolor, język, głośność",
                 v -> startActivity(new Intent(this, SdkActivity.class)));
-        LinearLayout faceRow = rowBox(gW, "🎨", "#8E24AA", "Tarcze wbudowane");
+        LinearLayout faceRow = rowBox(gW, "🎨", "#8E24AA", "Tarcze w zegarku");
         tvWrite = (TextView) faceRow.getTag();
-        LinearLayout chips = new LinearLayout(this);
-        String[] fc = {"#3949AB", "#5E35B1", "#8E24AA", "#C2185B"};
-        for (int k = 0; k < 4; k++) {
-            final int kk = k;
-            TextView c = new TextView(this);
-            c.setText(String.valueOf(k + 1));
-            c.setTextSize(15);
-            c.setTypeface(Typeface.DEFAULT_BOLD);
-            c.setTextColor(Color.WHITE);
-            c.setGravity(Gravity.CENTER);
-            c.setBackground(round(Color.parseColor(fc[k]), 18));
-            c.setOnClickListener(v -> setFace(kk));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(38), dp(38));
-            lp.setMargins(dp(3), 0, 0, 0);
-            chips.addView(c, lp);
-        }
-        faceRow.addView(chips);
+        TextView reload = stepBtn("↻", v -> loadDials(true));
+        reload.setTextColor(Color.parseColor("#6D28D9"));
+        reload.setBackground(round(Color.parseColor("#EDE9FE"), 19));
+        faceRow.addView(reload, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        dialChips = new LinearLayout(this);
+        dialChips.setPadding(dp(62), 0, dp(14), dp(12));
+        hs.addView(dialChips);
+        gW.addView(hs);
+        buildDialChips();
         divider(gW);
         LinearLayout scrRow = rowBox(gW, "💡", "#F59E0B", "Podświetlenie ekranu");
         tvScreen = (TextView) scrRow.getTag();
@@ -789,6 +857,7 @@ public class DashActivity extends Activity implements BleService.Listener {
 
     private void showPage(int i) {
         page = i;
+        if (i == 2) loadDials(false);
         sv.removeAllViews();
         sv.addView(pages[i]);
         sv.scrollTo(0, 0);
@@ -931,9 +1000,9 @@ public class DashActivity extends Activity implements BleService.Listener {
             tvBatChip.setBackground(round(Color.parseColor(bp > 30 ? "#3322C55E" : bp > 15 ? "#33FF9F1C" : "#66F43F5E"), 20));
         }
         if (screenWanted == 0 && BleService.screenSec > 0) screenWanted = BleService.screenSec;
-        sub(tvWrite, BleService.lastWrite.isEmpty()
-                ? (BleService.faceIdx >= 0 ? "Teraz: tarcza " + (BleService.faceIdx + 1) : "Dotknij numer tarczy")
-                : BleService.lastWrite);
+        sub(tvWrite, !dialMsg.isEmpty() ? dialMsg : (BleService.lastWrite.isEmpty()
+                ? (BleService.faceIdx >= 0 ? "Teraz: tarcza " + (BleService.faceIdx + 1) : "Dotknij tarczę poniżej")
+                : BleService.lastWrite));
         sub(tvScreen, (screenWanted > 0 ? screenWanted + " s" : "–")
                 + (BleService.screenSec > 0 && BleService.screenSec != screenWanted ? "  ·  zapisuję…" : (BleService.screenSec > 0 ? "  ·  w zegarku ✓" : "")));
         tvHeroState.setText((conn ? "● Połączony" : wait ? "◌ Czekam na zegarek…" : "○ " + st)

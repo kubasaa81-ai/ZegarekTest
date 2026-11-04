@@ -192,6 +192,7 @@ public class BleService extends Service {
                         if (status == com.inuker.bluetooth.library.Constants.STATUS_DISCONNECTED && (Sdk.ready || sdkConnecting)) {
                             log("ROZŁĄCZONO (biblioteka)");
                             Sdk.ready = false;
+                            Dials.reset();
                             sdkConnecting = false;
                             main.removeCallbacks(poll);
                             setState("Rozłączony – czekam na zegarek…");
@@ -266,6 +267,7 @@ public class BleService extends Service {
         getSharedPreferences("ust", MODE_PRIVATE).edit().putBoolean("sdk", false).apply();
         sdkLink = false;
         Sdk.ready = false;
+        Dials.reset();
         try { Sdk.m().disconnectWatch(Sdk.wr); } catch (Throwable ignored) { }
         main.postDelayed(this::connect, 2000);
     }
@@ -518,6 +520,7 @@ public class BleService extends Service {
         if (sdkLink && (Sdk.ready || sdkConnecting)) {
             connAttempt++;
             Sdk.ready = false;
+            Dials.reset();
             sdkConnecting = false;
             try { Sdk.m().disconnectWatch(Sdk.wr); } catch (Throwable ignored) { }
         }

@@ -582,6 +582,7 @@ public class SdkActivity extends Activity {
             @Override public void onBigBGPFileTransferComplete() { }
             @Override public void onTransferComplete() {
                 out("✅ Tarcza ze zdjęcia wgrana – sprawdź zegarek.");
+                Dials.reset();
                 try { JLWatchFaceManager.switch2PicDial(); } catch (Throwable ignored) { }
                 main.post(() -> pb.setVisibility(View.GONE));
             }
