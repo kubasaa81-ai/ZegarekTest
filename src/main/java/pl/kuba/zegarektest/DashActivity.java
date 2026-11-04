@@ -54,7 +54,28 @@ public class DashActivity extends Activity implements BleService.Listener {
             "#A78BFA", "#FB7185", "#F472B6", "#5EEAD4", "#86EFAC"};
     private static final String[] ICONS = {"👣", "📍", "🔥", "❤️", "🩺", "🫁", "🌡️", "🩸", "🌬️", "🔋"};
     private RingView ring;
-    private TextView tvRingSide;
+    private TextView tvRingSide, tvSleep;
+
+    private void refreshSleep() {
+        Calendar c = (Calendar) day.clone();
+        for (int k = 0; k < 7; k++, c.add(Calendar.DAY_OF_MONTH, -1)) {
+            String dk = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.getTime());
+            JSONObject sl = HistStore.load(this, dk).optJSONObject("sleep");
+            if (sl == null) continue;
+            int all = sl.optInt("min"), deep = sl.optInt("gleboki"), light = sl.optInt("plytki");
+            int q = sl.optInt("jakosc");
+            StringBuilder stars = new StringBuilder();
+            for (int i = 0; i < 5; i++) stars.append(i < q ? "★" : "☆");
+            float goal = getSharedPreferences("cele", MODE_PRIVATE).getFloat("sen", 7f);
+            tvSleep.setText("😴  Sen " + (k == 0 ? "(ostatnia noc)" : "z " + new SimpleDateFormat("dd.MM", Locale.US).format(c.getTime()))
+                    + "\n" + String.format(Locale.US, "%dh %02dmin", all / 60, all % 60) + "   " + sl.optString("od") + " → " + sl.optString("do")
+                    + "   " + stars
+                    + String.format(Locale.US, "\nGłęboki %dh %02dmin · Płytki %dh %02dmin · Pobudki: %d", deep / 60, deep % 60, light / 60, light % 60, sl.optInt("pobudki"))
+                    + (all < goal * 60 ? String.format(Locale.US, "\nDo celu %.0f h zabrakło %d min", goal, Math.round(goal * 60) - all) : "\n✅ Cel snu osiągnięty"));
+            return;
+        }
+        tvSleep.setText("😴  Sen: brak danych\nPobierz w Urządzenie → ✨ Sen, godzina i tarcza");
+    }
 
     @Override
     protected void onCreate(Bundle b) {
@@ -414,6 +435,9 @@ public class DashActivity extends Activity implements BleService.Listener {
         rs.setMargins(dp(12), 0, 0, 0);
         ringCard.addView(tvRingSide, rs);
         addCard(p0, ringCard);
+        tvSleep = card("");
+        tvSleep.setTextSize(15);
+        addCard(p0, tvSleep);
         for (int i = 0; i < 10; i += 2) p0.addView(row(tile(i), tile(i + 1)));
         p0.addView(section("Tętno w ciągu dnia"));
         chHr = chart(p0);
@@ -696,6 +720,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         try { pct = (int) (Long.parseLong(steps) * 100 / Math.max(1, goal)); } catch (Exception ignored) { }
         set(0, steps, "cel " + goal + " (" + pct + "%)");
         ring.set(pct / 100f, steps, "z " + goal + " kroków");
+        refreshSleep();
         tvRingSide.setText("🎯  " + pct + "% celu\n📍  " + dist + "\n🔥  " + kcal + "\n❤️  " + (BleService.sHr.equals("–") ? "–" : strip(BleService.sHr)));
         set(1, dist, "");
         set(2, kcal, "");

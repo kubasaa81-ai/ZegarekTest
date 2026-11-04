@@ -63,6 +63,9 @@ public class SdkActivity extends Activity {
     private boolean ready = false;
     private int watchDays = 3;
     private String photoPath = null;
+    private Uri photoUri = null;
+    private int dialW = 466, dialH = 466;
+    private boolean retried = false;
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
@@ -365,7 +368,9 @@ public class SdkActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (req != PICK || res != RESULT_OK || data == null || data.getData() == null) return;
         try {
-            photoPath = copyPhoto(data.getData());
+            photoUri = data.getData();
+            retried = false;
+            photoPath = copyPhoto(photoUri);
             out("🖼️ Zdjęcie gotowe, wysyłam na zegarek…");
             sendPhotoDial();
         } catch (Exception e) {
@@ -382,7 +387,7 @@ public class SdkActivity extends Activity {
         if (src == null) throw new Exception("nieznany format");
         int side = Math.min(src.getWidth(), src.getHeight());
         Bitmap sq = Bitmap.createBitmap(src, (src.getWidth() - side) / 2, (src.getHeight() - side) / 2, side, side);
-        Bitmap sc = Bitmap.createScaledBitmap(sq, Math.min(480, side), Math.min(480, side), true);
+        Bitmap sc = Bitmap.createScaledBitmap(sq, dialW, dialH, true);
         File dir = getExternalFilesDir("tarcze");
         if (dir == null) dir = getFilesDir();
         //noinspection ResultOfMethodCallIgnored
@@ -424,7 +429,23 @@ public class SdkActivity extends Activity {
             @Override public void onAIPreviewTransferComplete() { }
             @Override public void onBigBGPFileTransferComplete() { }
             @Override public void onTransferComplete() { out("✅ Tarcza ze zdjęcia wgrana – sprawdź zegarek."); main.post(() -> pb.setVisibility(View.GONE)); }
-            @Override public void onTransferError(int code, String msg) { out("❌ Błąd wgrywania tarczy: " + code + " " + msg); main.post(() -> pb.setVisibility(View.GONE)); }
+            @Override public void onTransferError(int code, String msg) {
+                // zegarek podaje wymagany rozmiar, np. „466 / 466” – dopasuj i spróbuj raz jeszcze
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{3})\\s*/\\s*(\\d{3})").matcher(msg == null ? "" : msg);
+                if (!retried && m.find() && photoUri != null) {
+                    retried = true;
+                    dialW = Integer.parseInt(m.group(1));
+                    dialH = Integer.parseInt(m.group(2));
+                    out("Dopasowuję zdjęcie do ekranu " + dialW + "×" + dialH + " i wysyłam ponownie…");
+                    main.post(() -> {
+                        try { photoPath = copyPhoto(photoUri); uploadPhoto(); }
+                        catch (Exception e) { out("❌ " + e.getMessage()); }
+                    });
+                    return;
+                }
+                out("❌ Błąd wgrywania tarczy (" + code + ")");
+                main.post(() -> pb.setVisibility(View.GONE));
+            }
         });
     }
 
