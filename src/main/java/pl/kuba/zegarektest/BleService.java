@@ -93,11 +93,7 @@ public class BleService extends Service {
         lastAlarm.put(key, now);
         log("ALARM: " + msg);
         if (gatt != null) {
-            buzz();
-            final String m2 = msg;
-            // po 3 s zatrzymaj „szukanie” (latarkę), potem pokaż napis
-            main.postDelayed(() -> sendVeepoo(new byte[]{(byte) 0xB5, 0x0A, 0x02}), 3000);
-            main.postDelayed(() -> sendMessage(0x01, "ALARM", m2), 3800);
+            sendMessage(0x01, "ALARM", msg);
         }
         Intent open = new Intent(this, DashActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 1, open,

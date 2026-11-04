@@ -192,8 +192,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvNotif.setText((calls ? "✅" : "⬜") + "  Połączenia – kto dzwoni" + (calls && !contacts ? " (bez kontaktów: sam numer)" : "")
                 + "\n" + (apps ? "✅" : "⬜") + "  SMS, WhatsApp, Messenger i inne aplikacje"
                 + "\n" + "✅  Alarmy zdrowia jako napis „ALARM”"
-                + "\n" + (getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("wibracja", true) ? "✅" : "⬜")
-                + "  Wibracja przy alarmie zdrowia (dotknij kartę, by zmienić)"
+
                 + (apps ? "\n\nWyłącz powiadomienia w HBand albo ją odinstaluj, żeby nie przychodziły podwójnie." : ""));
     }
     private ChartView chWeek;
@@ -496,7 +495,7 @@ public class DashActivity extends Activity implements BleService.Listener {
                     BleService b = BleService.instance;
                     if (b == null) { toast("Brak połączenia z zegarkiem"); return; }
                     b.alarm("test", "Test: wysokie ciśnienie 150/95", true);
-                    toast("Najpierw wibracja, po chwili napis ALARM");
+                    toast("Na zegarku powinien pojawić się napis ALARM");
                 })
         ));
         p2.addView(section("Połączenie"));
