@@ -174,7 +174,25 @@ public class DashActivity extends Activity implements BleService.Listener {
     private ChartView chSteps;
     private android.widget.EditText etGoalSteps, etGoalSleep;
     private int page = 0;
-    private TextView tvWrite, tvHc, tvWeek;
+    private TextView tvWrite, tvHc, tvWeek, tvNotif;
+
+    private void testMsg(int type, String name, String content) {
+        BleService s = BleService.instance;
+        if (s == null) { toast("Brak połączenia z zegarkiem"); return; }
+        s.sendMessage(type, name, content);
+        toast("Wysłano – spójrz na zegarek");
+    }
+
+    private void notifStatus() {
+        boolean calls = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED;
+        boolean contacts = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
+        boolean apps = NotifService.enabled(this);
+        tvNotif.setText((calls ? "✅" : "⬜") + "  Połączenia – kto dzwoni" + (calls && !contacts ? " (bez kontaktów: sam numer)" : "")
+                + "\n" + (apps ? "✅" : "⬜") + "  SMS, WhatsApp, Messenger i inne aplikacje"
+                + "\n" + "✅  Alarmy zdrowia jako napis „ALARM”"
+                + (apps ? "\n\nWyłącz powiadomienia w HBand albo ją odinstaluj, żeby nie przychodziły podwójnie." : ""));
+    }
     private ChartView chWeek;
 
     private long daySteps(String dk) {
@@ -452,6 +470,22 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvWrite = card("");
         tvWrite.setTextSize(13);
         addCard(p2, tvWrite);
+        p2.addView(section("Powiadomienia na zegarek"));
+        tvNotif = card("");
+        tvNotif.setTextSize(13);
+        addCard(p2, tvNotif);
+        p2.addView(row(
+                btn("📞 Kto dzwoni – włącz", "#16A34A", v -> requestPermissions(new String[]{
+                        Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS}, 5)),
+                btn("💬 Powiadomienia – włącz", "#2563EB", v -> {
+                    try { startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
+                    catch (Exception e) { toast("Otwórz: Ustawienia → Powiadomienia → Dostęp do powiadomień"); }
+                })
+        ));
+        p2.addView(row(
+                btn("Test wiadomości", "#7C3AED", v -> testMsg(0x01, "Mój Zegarek", "Test powiadomienia – działa! Zażółć gęślą jaźń")),
+                btn("Test połączenia", "#DB2777", v -> testMsg(0x00, "Test – dzwoni Ania", ""))
+        ));
         p2.addView(section("Połączenie"));
         p2.addView(row(
                 btn("Odśwież dane", "#00897B", v -> refreshWatch()),
@@ -839,6 +873,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         super.onResume();
         BleService.listener = this;
         refresh();
+        notifStatus();
     }
 
     @Override

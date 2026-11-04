@@ -92,7 +92,7 @@ public class BleService extends Service {
         if (!force && last != null && now - last < 60 * 60 * 1000) return;
         lastAlarm.put(key, now);
         log("ALARM: " + msg);
-        if (gatt != null) sendVeepoo(new byte[]{(byte) 0xB5, 0x0A, 0x01});
+        if (gatt != null) sendMessage(0x01, "ALARM", msg);
         Intent open = new Intent(this, DashActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 1, open,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
@@ -184,6 +184,9 @@ public class BleService extends Service {
         al.setVibrationPattern(new long[]{0, 400, 200, 400, 200, 400});
         nm.createNotificationChannel(al);
         startFg();
+        try {
+            registerReceiver(phoneReceiver, new IntentFilter(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED));
+        } catch (Exception ignored) { }
         IntentFilter f = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(btReceiver, f, Context.RECEIVER_EXPORTED);
@@ -232,6 +235,7 @@ public class BleService extends Service {
     @Override
     public void onDestroy() {
         try { unregisterReceiver(btReceiver); } catch (Exception ignored) { }
+        try { unregisterReceiver(phoneReceiver); } catch (Exception ignored) { }
         closeGatt();
         instance = null;
         super.onDestroy();
@@ -547,6 +551,93 @@ public class BleService extends Service {
         if (lastHr > 0) sHr = lastHr + tag;
         notifyUi();
         return "historia " + out;
+    }
+
+    // ---------------- wiadomości na ekran zegarka ----------------
+
+    private static java.util.List<byte[]> chunks(String s, int max, int limit) {
+        java.util.List<byte[]> out = new ArrayList<>();
+        java.io.ByteArrayOutputStream cur = new java.io.ByteArrayOutputStream();
+        int i = 0;
+        while (i < s.length() && out.size() < limit) {
+            int cp = s.codePointAt(i);
+            byte[] b = new String(Character.toChars(cp)).getBytes(StandardCharsets.UTF_8);
+            if (cur.size() + b.length > max) {
+                out.add(cur.toByteArray());
+                cur.reset();
+                if (out.size() >= limit) break;
+            }
+            cur.write(b, 0, b.length);
+            i += Character.charCount(cp);
+        }
+        if (cur.size() > 0 && out.size() < limit) out.add(cur.toByteArray());
+        return out;
+    }
+
+    /** Wiadomość na ekran zegarka. type: 00 połączenie, 01 SMS, 09 WhatsApp, 11 inne… */
+    public void sendMessage(int type, String name, String content) {
+        if (name == null) name = "";
+        if (content == null) content = "";
+        java.util.List<byte[]> n = chunks(name.replace('\n', ' '), 14, 2);
+        java.util.List<byte[]> c = chunks(content.replace('\n', ' '), 14, 10);
+        int total = n.size() + c.size();
+        if (total == 0) return;
+        log("Wiadomość na zegarek (typ " + type + "): " + name + (content.isEmpty() ? "" : " – " + content));
+        int idx = 1;
+        for (int k = 0; k < n.size() + c.size(); k++) {
+            boolean isName = k < n.size();
+            byte[] part = isName ? n.get(k) : c.get(k - n.size());
+            byte[] p = new byte[20];
+            p[0] = (byte) 0xC2;
+            p[1] = (byte) type;
+            p[2] = (byte) part.length;
+            p[3] = (byte) total;
+            p[4] = (byte) idx++;
+            p[5] = (byte) (isName ? 1 : 2);
+            System.arraycopy(part, 0, p, 6, part.length);
+            sendVeepoo(p);
+        }
+    }
+
+    // ---------------- połączenia przychodzące ----------------
+
+    private String lastRing = "";
+    private final Runnable ringFallback = () -> sendMessage(0x00, "Połączenie przychodzące", "");
+
+    private final BroadcastReceiver phoneReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            if (!getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("polaczenia", true)) return;
+            String st = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE);
+            String num = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER);
+            if (android.telephony.TelephonyManager.EXTRA_STATE_RINGING.equals(st)) {
+                if (num == null || num.isEmpty()) {
+                    main.removeCallbacks(ringFallback);
+                    main.postDelayed(ringFallback, 1500);
+                    return;
+                }
+                if (num.equals(lastRing)) return;
+                lastRing = num;
+                main.removeCallbacks(ringFallback);
+                sendMessage(0x00, contactName(num), "");
+            } else {
+                lastRing = "";
+                main.removeCallbacks(ringFallback);
+            }
+        }
+    };
+
+    private String contactName(String num) {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                android.net.Uri u = android.net.Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, android.net.Uri.encode(num));
+                try (android.database.Cursor cur = getContentResolver().query(u,
+                        new String[]{android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME}, null, null, null)) {
+                    if (cur != null && cur.moveToFirst()) return cur.getString(0);
+                }
+            }
+        } catch (Exception ignored) { }
+        return num;
     }
 
     /** Wysyła komendę do głównego kanału Veepoo (f0080003), dopełnioną zerami do 20 bajtów. */
