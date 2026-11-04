@@ -392,6 +392,7 @@ public class BleService extends Service {
     }
 
     private void notifyUi() {
+        WatchWidget.update(this);
         Listener l = listener;
         if (l != null) main.post(l::onStateChanged);
     }

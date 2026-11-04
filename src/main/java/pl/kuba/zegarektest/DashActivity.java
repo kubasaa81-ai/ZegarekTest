@@ -71,10 +71,11 @@ public class DashActivity extends Activity implements BleService.Listener {
                     + "\n" + String.format(Locale.US, "%dh %02dmin", all / 60, all % 60) + "   " + sl.optString("od") + " → " + sl.optString("do")
                     + "   " + stars
                     + String.format(Locale.US, "\nGłęboki %dh %02dmin · Płytki %dh %02dmin · Pobudki: %d", deep / 60, deep % 60, light / 60, light % 60, sl.optInt("pobudki"))
-                    + (all < goal * 60 ? String.format(Locale.US, "\nDo celu %.0f h zabrakło %d min", goal, Math.round(goal * 60) - all) : "\n✅ Cel snu osiągnięty"));
+                    + (all < goal * 60 ? String.format(Locale.US, "\nDo celu %.0f h zabrakło %d min", goal, Math.round(goal * 60) - all) : "\n✅ Cel snu osiągnięty")
+                    + "\n👉 Dotknij – wykres faz i tydzień");
             return;
         }
-        tvSleep.setText("😴  Sen: brak danych\nPobierz w Urządzenie → ✨ Sen, godzina i tarcza");
+        tvSleep.setText("😴  Sen: brak danych\n👉 Dotknij, aby otworzyć zakładkę Sen i pobrać");
     }
 
     @Override
@@ -437,6 +438,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         addCard(p0, ringCard);
         tvSleep = card("");
         tvSleep.setTextSize(15);
+        tvSleep.setOnClickListener(v -> startActivity(new Intent(this, SleepActivity.class)));
         addCard(p0, tvSleep);
         for (int i = 0; i < 10; i += 2) p0.addView(row(tile(i), tile(i + 1)));
         p0.addView(section("Tętno w ciągu dnia"));
@@ -567,6 +569,10 @@ public class DashActivity extends Activity implements BleService.Listener {
         btnAlarmOn = btn("", "#2E7D32", v -> toggleAlarms());
         p3.addView(row(btnAlarmOn, btn("Zapisz progi", "#1565C0", v -> saveThresholds())));
         p3.addView(row(btn("Test alarmu", "#C62828", v -> testAlarm())));
+        p3.addView(row(
+                btn("📄 Raport 7 dni", "#0B3D91", v -> Report.make(this, 7)),
+                btn("📄 Raport 30 dni", "#0E7490", v -> Report.make(this, 30))
+        ));
         TextView note = new TextView(this);
         note.setText("Alarm przychodzi dla świeżego pomiaru (z ostatnich 30 min), najwyżej raz na godzinę dla danego parametru. Zegarek nie jest urządzeniem medycznym – przy złym samopoczuciu nie czekaj na alarm.");
         note.setTextSize(12);

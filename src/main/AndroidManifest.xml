@@ -30,7 +30,7 @@
         tools:replace="android:label,android:allowBackup"
         android:allowBackup="false"
         android:label="Mój Zegarek"
-        android:icon="@android:drawable/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity
@@ -56,6 +56,22 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+
+        <activity
+            android:name=".SleepActivity"
+            android:exported="false" />
+
+        <receiver
+            android:name=".WatchWidget"
+            android:exported="false"
+            android:label="Mój zegarek">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
 
         <activity
             android:name=".SdkActivity"

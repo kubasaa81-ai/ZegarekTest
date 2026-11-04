@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/widget_bg">
+
+    <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="⌚ Mój zegarek" android:textColor="#CFE8FF" android:textSize="12sp" android:maxLines="1"/>
+
+    <TextView android:id="@+id/w_steps" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="👣 –" android:textColor="#FFFFFF" android:textSize="22sp" android:textStyle="bold" android:maxLines="1"/>
+
+    <TextView android:id="@+id/w_line2" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="❤️ –   🔋 –" android:textColor="#FFFFFF" android:textSize="14sp" android:maxLines="1"/>
+
+    <TextView android:id="@+id/w_line3" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="😴 –" android:textColor="#E0F2FE" android:textSize="13sp" android:maxLines="2"/>
+</LinearLayout>
