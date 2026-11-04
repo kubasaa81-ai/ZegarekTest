@@ -105,4 +105,24 @@ public class HistStore {
             saveSoon(c, day);
         } catch (Exception ignored) { }
     }
+
+    /** Dopisuje trening do dnia. */
+    public static synchronized void addTraining(Context c, String day, JSONObject t) {
+        try {
+            JSONObject o = load(c, day);
+            org.json.JSONArray a = o.optJSONArray("treningi");
+            if (a == null) { a = new org.json.JSONArray(); o.put("treningi", a); }
+            a.put(t);
+            saveSoon(c, day);
+        } catch (Exception ignored) { }
+    }
+
+    /** Czyści pamięć podręczną (po przywróceniu kopii zapasowej). */
+    public static synchronized void clearCache() {
+        flush();
+        cache.clear();
+        dirty.clear();
+    }
+
+    public static File folder(Context c) { return dir(c); }
 }

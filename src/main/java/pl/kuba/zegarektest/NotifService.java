@@ -49,6 +49,7 @@ public class NotifService extends NotificationListenerService {
     public void onNotificationPosted(StatusBarNotification sbn) {
         try {
             if (!getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("aplikacje", true)) return;
+            if (WatchSettingsActivity.quietNow(this)) return;
             String pkg = sbn.getPackageName();
             if (pkg.equals(getPackageName())) return;
             for (String s : SKIP) if (s.equals(pkg)) return;

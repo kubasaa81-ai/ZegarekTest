@@ -154,6 +154,16 @@ public class RemindActivity extends Activity {
         p.addView(btn("✅  Zapisz w zegarku", "#2563EB", "#1D4ED8", v -> saveMove()), lp(0));
         moveLabels();
 
+        // ---- budzik ----
+        p.addView(section("⏰ Budzik w zegarku"));
+        LinearLayout ra = new LinearLayout(this);
+        ra.addView(btn("➕ Codziennie", "#EA580C", "#C2410C", v -> pickAlarm(true)), lp(1));
+        ra.addView(btn("➕ Jednorazowo", "#F59E0B", "#D97706", v -> pickAlarm(false)), lp(1));
+        p.addView(ra);
+        alarms = new LinearLayout(this);
+        alarms.setOrientation(LinearLayout.VERTICAL);
+        p.addView(alarms);
+
         // ---- o godzinie ----
         p.addView(section("💧 💊 Woda, leki i inne – o stałej godzinie"));
         LinearLayout r2 = new LinearLayout(this);
@@ -175,6 +185,7 @@ public class RemindActivity extends Activity {
 
         setContentView(outer);
         refreshList();
+        readAlarms();
     }
 
     private void info(String s) { main.post(() -> tvInfo.setText(s)); }
@@ -335,6 +346,76 @@ public class RemindActivity extends Activity {
                 }
             }));
         } catch (Throwable ignored) { }
+    }
+
+    // ---------------- budzik (alarmy w zegarku) ----------------
+
+    private LinearLayout alarms;
+
+    private void pickAlarm(boolean daily) {
+        if (!Sdk.ready) { info("⚠️ Zegarek nie jest teraz połączony – spróbuj za chwilę."); return; }
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        new TimePickerDialog(this, (v, h, m) -> addAlarm(h, m, daily), 6, 30, true).show();
+    }
+
+    private void addAlarm(int h, int m, boolean daily) {
+        try {
+            String date = "0000-00-00";
+            if (!daily) {
+                java.util.Calendar c = java.util.Calendar.getInstance();
+                int now = c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE);
+                if (h * 60 + m <= now) c.add(java.util.Calendar.DAY_OF_MONTH, 1);
+                date = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.getTime());
+            }
+            com.veepoo.protocol.model.settings.Alarm2Setting a =
+                    new com.veepoo.protocol.model.settings.Alarm2Setting(h, m, daily ? "1111111" : "0000000", 0, date, true);
+            Sdk.m().addAlarm2(Sdk.wr, d -> main.post(() -> {
+                info(String.valueOf(d.getOprate()).contains("SUCCESS") ? String.format(Locale.US, "✅ Budzik %02d:%02d zapisany w zegarku", h, m)
+                        : String.valueOf(d.getOprate()).equals("ALARM_FULL") ? "Zegarek ma już komplet budzików – usuń któryś"
+                        : "Zegarek: " + d.getOprate());
+                showAlarms(d.getAlarm2SettingList());
+            }), a);
+            info("Wysyłam budzik…");
+        } catch (Throwable t) {
+            info("❌ Budzik: " + t.getMessage());
+        }
+    }
+
+    private void readAlarms() {
+        if (!Sdk.ready) { alarms.removeAllViews(); alarms.addView(card("Połącz zegarek, by zobaczyć budziki."), lp(0)); return; }
+        try {
+            Sdk.m().readAlarm2(Sdk.wr, d -> main.post(() -> showAlarms(d.getAlarm2SettingList())));
+        } catch (Throwable t) {
+            info("Budziki: " + t.getMessage());
+        }
+    }
+
+    private void showAlarms(List<com.veepoo.protocol.model.settings.Alarm2Setting> l) {
+        if (l == null) { readAlarms(); return; }
+        alarms.removeAllViews();
+        if (l.isEmpty()) { alarms.addView(card("Brak budzików w zegarku."), lp(0)); return; }
+        for (com.veepoo.protocol.model.settings.Alarm2Setting a : l) {
+            String rep = a.getRepeatStatus() == null || a.getRepeatStatus().replace("0", "").isEmpty()
+                    ? "jednorazowo" + (a.getUnRepeatDate() != null && !a.getUnRepeatDate().startsWith("0000") ? " " + a.getUnRepeatDate() : "")
+                    : a.getRepeatStatus().equals("1111111") ? "codziennie" : "wybrane dni";
+            TextView t = card(String.format(Locale.US, "⏰  %02d:%02d\n%s · %s", a.getAlarmHour(), a.getAlarmMinute(), rep,
+                    a.isOpen() ? "włączony" : "wyłączony"));
+            t.setTextSize(15);
+            t.setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle(String.format(Locale.US, "Budzik %02d:%02d", a.getAlarmHour(), a.getAlarmMinute()))
+                    .setPositiveButton("Usuń", (dd, w) -> {
+                        try { Sdk.m().deleteAlarm2(Sdk.wr, d -> main.post(() -> { info("Usunięto budzik"); showAlarms(d.getAlarm2SettingList()); }), a); }
+                        catch (Throwable e) { info("❌ " + e.getMessage()); }
+                    })
+                    .setNeutralButton(a.isOpen() ? "Wyłącz" : "Włącz", (dd, w) -> {
+                        try {
+                            a.isOpen = !a.isOpen();
+                            Sdk.m().modifyAlarm2(Sdk.wr, d -> main.post(() -> showAlarms(d.getAlarm2SettingList())), a);
+                        } catch (Throwable e) { info("❌ " + e.getMessage()); }
+                    })
+                    .setNegativeButton("Zamknij", null).show());
+            alarms.addView(t, lp(0));
+        }
     }
 
     private void refreshList() {

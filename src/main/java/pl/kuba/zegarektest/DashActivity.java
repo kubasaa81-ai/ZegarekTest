@@ -304,6 +304,11 @@ public class DashActivity extends Activity implements BleService.Listener {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == 78 && res == RESULT_OK && data != null && data.getData() != null) {
+            Backup.restore(this, data.getData());
+            refresh();
+            return;
+        }
         if (req == 77) {
             BleService.appendLog(this, "Health Connect: okno zgód zamknięte, kod " + res);
             hcStatus();
@@ -345,6 +350,7 @@ public class DashActivity extends Activity implements BleService.Listener {
     }
 
     private TextView tvBatChip;
+    private android.widget.EditText etWeight;
     private LinearLayout dialChips;
     private String dialMsg = "";
 
@@ -643,6 +649,10 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvSportSum = card("");
         tvSportSum.setTextSize(17);
         addCard(p1, tvSportSum);
+        p1.addView(row(
+                btn("🏃 Trening", "#EA580C", v -> startActivity(new Intent(this, TrainingActivity.class))),
+                btn("📈 30 dni", "#1D4ED8", v -> startActivity(new Intent(this, TrendActivity.class)))
+        ));
         p1.addView(section("Kroki co 30 minut"));
         chSteps = chart(p1);
         chSteps.setBars(true);
@@ -700,12 +710,18 @@ public class DashActivity extends Activity implements BleService.Listener {
         LinearLayout gH = group(p2);
         setRow(gH, "🩺", "#E11D48", "Zmierz teraz", "Ciśnienie, tlen, tętno, temperatura",
                 v -> startActivity(new Intent(this, MeasureActivity.class)));
-        setRow(gH, "⏰", "#0D9488", "Przypomnienia", "Ruch, woda, leki",
+        setRow(gH, "⏰", "#0D9488", "Przypomnienia i budzik", "Budzik, ruch, woda, leki",
                 v -> startActivity(new Intent(this, RemindActivity.class)));
+        setRow(gH, "🏃", "#EA580C", "Trening", "Spacer, bieg, rower – czas, tętno, kroki",
+                v -> startActivity(new Intent(this, TrainingActivity.class)));
+        setRow(gH, "📈", "#1D4ED8", "Ostatnie 30 dni", "Czy ciśnienie i tętno idą w górę, czy w dół",
+                v -> startActivity(new Intent(this, TrendActivity.class)));
 
         // Zegarek
         p2.addView(section("Zegarek"));
         LinearLayout gW = group(p2);
+        setRow(gW, "⚙️", "#0F766E", "Ustawienia zegarka", "Dźwięk, połączenia, pomiary automatyczne, noc, pogoda, muzyka",
+                v -> startActivity(new Intent(this, WatchSettingsActivity.class)));
         setRow(gW, "🖼️", "#4F46E5", "Tarcza ze zdjęcia i wygląd", "Zdjęcie, data, bateria, kolor, język, głośność",
                 v -> startActivity(new Intent(this, SdkActivity.class)));
         LinearLayout faceRow = rowBox(gW, "🎨", "#8E24AA", "Tarcze w zegarku");
@@ -741,7 +757,8 @@ public class DashActivity extends Activity implements BleService.Listener {
         p2.addView(section("Powiadomienia na zegarek"));
         LinearLayout gN = group(p2);
         tvCalls = setRow(gN, "📞", "#16A34A", "Kto dzwoni", "", v -> requestPermissions(new String[]{
-                Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS}, 5));
+                Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS,
+                Manifest.permission.ANSWER_PHONE_CALLS}, 5));
         tvApps = setRow(gN, "💬", "#2563EB", "SMS, WhatsApp, Messenger i inne", "", v -> {
             try { startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
             catch (Exception e) { toast("Otwórz: Ustawienia → Powiadomienia → Dostęp do powiadomień"); }
@@ -796,6 +813,8 @@ public class DashActivity extends Activity implements BleService.Listener {
         etGoalSleep = numEdit(String.valueOf(getSharedPreferences("cele", MODE_PRIVATE).getFloat("sen", 7f)));
         goals.addView(labelRow("Kroki dziennie", etGoalSteps));
         goals.addView(labelRow("Sen (godziny)", etGoalSleep));
+        etWeight = numEdit(String.valueOf(Math.round(getSharedPreferences("cele", MODE_PRIVATE).getFloat("waga", 80f))));
+        goals.addView(labelRow("Waga (kg) – do kalorii", etWeight));
         addCard(p3, goals);
         p3.addView(row(btn("Zapisz cele", "#1565C0", v -> saveGoals())));
 
@@ -816,6 +835,16 @@ public class DashActivity extends Activity implements BleService.Listener {
         p3.addView(row(
                 btn("📄 Raport 7 dni", "#0B3D91", v -> Report.make(this, 7)),
                 btn("📄 Raport 30 dni", "#0E7490", v -> Report.make(this, 30))
+        ));
+        p3.addView(section("Kopia zapasowa"));
+        p3.addView(row(
+                btn("💾 Zrób kopię", "#15803D", v -> Backup.export(this)),
+                btn("♻️ Przywróć", "#B45309", v -> {
+                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("*/*");
+                    startActivityForResult(i, 78);
+                })
         ));
         TextView note = new TextView(this);
         note.setText("Alarm przychodzi dla świeżego pomiaru (z ostatnich 30 min), najwyżej raz na godzinę dla danego parametru. Zegarek nie jest urządzeniem medycznym – przy złym samopoczuciu nie czekaj na alarm.");
@@ -874,7 +903,8 @@ public class DashActivity extends Activity implements BleService.Listener {
         try {
             int st = Integer.parseInt(etGoalSteps.getText().toString().trim());
             float sl = Float.parseFloat(etGoalSleep.getText().toString().replace(',', '.').trim());
-            getSharedPreferences("cele", MODE_PRIVATE).edit().putInt("kroki", st).putFloat("sen", sl).apply();
+            float kg = Float.parseFloat(etWeight.getText().toString().replace(',', '.').trim());
+            getSharedPreferences("cele", MODE_PRIVATE).edit().putInt("kroki", st).putFloat("sen", sl).putFloat("waga", kg).apply();
             toast("Cele zapisane");
             refresh();
         } catch (Exception e) {
@@ -1010,7 +1040,14 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvHeroBat.setText(BleService.sBat.equals("–") ? "🔋 bateria: –" : "🔋 bateria: " + BleService.sBat);
 
         refreshWeek(goal);
-        tvSportSum.setText("Kroki: " + steps + "   (cel " + goal + ", " + pct + "%)\nDystans: " + dist + "\nKalorie: " + kcal);
+        StringBuilder trs = new StringBuilder();
+        org.json.JSONArray ta = o.optJSONArray("treningi");
+        if (ta != null) for (int ti = 0; ti < ta.length(); ti++) {
+            JSONObject t = ta.optJSONObject(ti);
+            if (t != null) trs.append("\n").append(TrainingActivity.describe(t));
+        }
+        tvSportSum.setText("Kroki: " + steps + "   (cel " + goal + ", " + pct + "%)\nDystans: " + dist + "\nKalorie: " + kcal
+                + (trs.length() > 0 ? "\n\nTreningi:" + trs : ""));
         List<float[]> bars = new ArrayList<>();
         StringBuilder list = new StringBuilder();
         int maxSlot = 0;

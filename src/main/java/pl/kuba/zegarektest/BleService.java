@@ -300,6 +300,15 @@ public class BleService extends Service {
             try { client.notify(mac, x[0], x[1], rawNotify); } catch (Throwable ignored) { }
         }
         log("POŁĄCZONO (jedno połączenie przez bibliotekę, wersja zegarka " + Sdk.version + ", godzina ustawiona)");
+        try {
+            Sdk.m().settingPhoneListener(new com.veepoo.protocol.listener.data.IPhoneListener() {
+                @Override public void rejectPhone() { main.post(BleService.this::rejectCall); }
+                @Override public void cliencePhone() { main.post(BleService.this::muteRinger); }
+                @Override public void appAnswerCall() { }
+            });
+        } catch (Throwable t) { log("Obsługa połączeń z zegarka: " + t); }
+        try { Sdk.m().settingMusicControlListener(music); } catch (Throwable t) { log("Muzyka: " + t); }
+        main.postDelayed(() -> Weather.maybeSend(this, this::log, false), 45000);
         setState("Połączony");
         notifyUi();
         main.postDelayed(() -> {
@@ -355,7 +364,7 @@ public class BleService extends Service {
             sp.edit().putString(k, t).apply();
             String text = o.optString("t");
             log("Przypomnienie: " + text);
-            if (!o.optBoolean("zeg") && linked()) sendMessage(0x01, "Przypomnienie", text);
+            if (!o.optBoolean("zeg") && linked() && !WatchSettingsActivity.quietNow(this)) sendMessage(0x01, "Przypomnienie", text);
             Intent open = new Intent(this, RemindActivity.class);
             PendingIntent pi = PendingIntent.getActivity(this, 2, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             Notification n = new Notification.Builder(this, "alarm")
@@ -870,12 +879,91 @@ public class BleService extends Service {
     }
 
     /** Koniec dzwonienia na zegarku (odebrane / odrzucone). */
-    public void stopCall() { }
+    public void stopCall() {
+        if (callShown && sdkLink && Sdk.ready) {
+            try { Sdk.m().offhookOrIdlePhone(Sdk.wr); } catch (Throwable ignored) { }
+        }
+        callShown = false;
+    }
+
+    private boolean callShown = false;
+
+    public void testCall(String name) { callRing(name, "600100200"); }
+
+    /** Połączenie przychodzące: ekran dzwonienia zegarka (biblioteka) albo napis. */
+    private void callRing(String name, String num) {
+        if (sdkLink && Sdk.ready && getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("ekranPol", true)) {
+            try {
+                Sdk.m().sendSocialMsgContent(Sdk.wr, new com.veepoo.protocol.model.settings.ContentPhoneSetting(
+                        com.veepoo.protocol.model.enums.ESocailMsg.PHONE, name, num == null ? "" : num));
+                callShown = true;
+                log("Połączenie → ekran dzwonienia na zegarku: " + name);
+                return;
+            } catch (Throwable t) { log("Ekran połączenia: " + t); }
+        }
+        sendMessage(0x00, name, "");
+    }
+
+    private void rejectCall() {
+        log("Zegarek: odrzuć połączenie");
+        try {
+            android.telecom.TelecomManager tm = getSystemService(android.telecom.TelecomManager.class);
+            if (checkSelfPermission(android.Manifest.permission.ANSWER_PHONE_CALLS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                tm.endCall();
+                return;
+            }
+            log("Brak zgody na rozłączanie – wyciszam");
+        } catch (Throwable t) { log("Odrzucenie: " + t); }
+        muteRinger();
+    }
+
+    private void muteRinger() {
+        log("Zegarek: wycisz dzwonek");
+        try {
+            android.telecom.TelecomManager tm = getSystemService(android.telecom.TelecomManager.class);
+            tm.silenceRinger();
+            return;
+        } catch (Throwable ignored) { }
+        try {
+            android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+            am.adjustStreamVolume(android.media.AudioManager.STREAM_RING, android.media.AudioManager.ADJUST_MUTE, 0);
+            main.postDelayed(() -> {
+                try { am.adjustStreamVolume(android.media.AudioManager.STREAM_RING, android.media.AudioManager.ADJUST_UNMUTE, 0); } catch (Throwable ignored) { }
+            }, 60000);
+        } catch (Throwable t) { log("Wyciszenie: " + t); }
+    }
+
+    private void mediaKey(int code) {
+        try {
+            android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+            am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, code));
+            am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, code));
+        } catch (Throwable ignored) { }
+    }
+
+    private void musicVol(int dir) {
+        try {
+            getSystemService(android.media.AudioManager.class).adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, dir,
+                    android.media.AudioManager.FLAG_SHOW_UI);
+        } catch (Throwable ignored) { }
+    }
+
+    private final com.veepoo.protocol.listener.data.IMusicControlListener music = new com.veepoo.protocol.listener.data.IMusicControlListener() {
+        @Override public void nextMusic() { mediaKey(android.view.KeyEvent.KEYCODE_MEDIA_NEXT); }
+        @Override public void previousMusic() { mediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS); }
+        @Override public void pauseAndPlayMusic() { mediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE); }
+        @Override public void pauseMusic() { mediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE); }
+        @Override public void playMusic() { mediaKey(android.view.KeyEvent.KEYCODE_MEDIA_PLAY); }
+        @Override public void voiceUp() { musicVol(android.media.AudioManager.ADJUST_RAISE); }
+        @Override public void voiceDown() { musicVol(android.media.AudioManager.ADJUST_LOWER); }
+        @Override public void oprateMusicSuccess() { }
+        @Override public void oprateMusicFail() { }
+    };
 
     // ---------------- połączenia przychodzące ----------------
 
     private String lastRing = "";
-    private final Runnable ringFallback = () -> { lastRing = "?"; sendMessage(0x00, "Połączenie", ""); };
+    private final Runnable ringFallback = () -> { lastRing = "?"; callRing("Połączenie", ""); };
 
     private final BroadcastReceiver phoneReceiver = new BroadcastReceiver() {
         @Override
@@ -884,6 +972,8 @@ public class BleService extends Service {
             String st = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE);
             String num = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER);
             if (android.telephony.TelephonyManager.EXTRA_STATE_RINGING.equals(st)) {
+                if (WatchSettingsActivity.quietNow(BleService.this)
+                        && getSharedPreferences("cisza", MODE_PRIVATE).getBoolean("polaczenia", false)) return;
                 if (num == null || num.isEmpty()) {
                     main.removeCallbacks(ringFallback);
                     main.postDelayed(ringFallback, 1500);
@@ -892,7 +982,7 @@ public class BleService extends Service {
                 if (num.equals(lastRing)) return;
                 lastRing = num;
                 main.removeCallbacks(ringFallback);
-                sendMessage(0x00, contactName(num), "");
+                callRing(contactName(num), num);
             } else {
                 boolean wasRinging = !lastRing.isEmpty();
                 lastRing = "";
@@ -988,7 +1078,7 @@ public class BleService extends Service {
         public void run() {
             if (!linked()) return;
             sendVeepoo(new byte[]{(byte) 0xD8, 0});
-            if (sdkLink) autoSleep();
+            if (sdkLink) { autoSleep(); Weather.maybeSend(BleService.this, BleService.this::log, false); }
             sendVeepoo(new byte[]{(byte) 0xA0, 0});
             if (++pollCount % 3 == 0) sendVeepoo(new byte[]{(byte) 0xDF, 0});
             main.postDelayed(this, 5 * 60 * 1000);
