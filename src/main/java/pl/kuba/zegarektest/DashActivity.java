@@ -192,6 +192,8 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvNotif.setText((calls ? "✅" : "⬜") + "  Połączenia – kto dzwoni" + (calls && !contacts ? " (bez kontaktów: sam numer)" : "")
                 + "\n" + (apps ? "✅" : "⬜") + "  SMS, WhatsApp, Messenger i inne aplikacje"
                 + "\n" + "✅  Alarmy zdrowia jako napis „ALARM”"
+                + "\n" + (getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("wibracja", true) ? "✅" : "⬜")
+                + "  Wibracja zegarka przy połączeniu i alarmie (dotknij, by zmienić)"
                 + (apps ? "\n\nWyłącz powiadomienia w HBand albo ją odinstaluj, żeby nie przychodziły podwójnie." : ""));
     }
     private ChartView chWeek;
@@ -474,6 +476,11 @@ public class DashActivity extends Activity implements BleService.Listener {
         p2.addView(section("Powiadomienia na zegarek"));
         tvNotif = card("");
         tvNotif.setTextSize(13);
+        tvNotif.setOnClickListener(v -> {
+            boolean on = getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("wibracja", true);
+            getSharedPreferences("powiad", MODE_PRIVATE).edit().putBoolean("wibracja", !on).apply();
+            notifStatus();
+        });
         addCard(p2, tvNotif);
         p2.addView(row(
                 btn("📞 Kto dzwoni – włącz", "#16A34A", v -> requestPermissions(new String[]{

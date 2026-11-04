@@ -92,7 +92,11 @@ public class BleService extends Service {
         if (!force && last != null && now - last < 60 * 60 * 1000) return;
         lastAlarm.put(key, now);
         log("ALARM: " + msg);
-        if (gatt != null) sendMessage(0x01, "ALARM", msg);
+        if (gatt != null) {
+            buzz();
+            final String m2 = msg;
+            main.postDelayed(() -> sendMessage(0x01, "ALARM", m2), 2500);
+        }
         Intent open = new Intent(this, DashActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 1, open,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
@@ -608,7 +612,16 @@ public class BleService extends Service {
             sendVeepoo(p);
         }
         // połączenie: po nazwie polecenie „dzwoni” (tak robi HBand – zegarek odpowiada C1 01 01)
-        if (type == 0x00) sendVeepoo(new byte[]{(byte) 0xC1, 0x01, 0x01, 0x01});
+        if (type == 0x00) {
+            sendVeepoo(new byte[]{(byte) 0xC1, 0x01, 0x01, 0x01});
+            buzz();
+        }
+    }
+
+    /** Wibracja zegarka jak przy „Znajdź zegarek” (ok. 10 s). */
+    public void buzz() {
+        if (getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("wibracja", true))
+            sendVeepoo(new byte[]{(byte) 0xB5, 0x0A, 0x01});
     }
 
     /** Koniec dzwonienia na zegarku (odebrane / odrzucone). */
