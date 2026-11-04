@@ -191,6 +191,7 @@ public class SdkActivity extends Activity {
         add(p, bDown);
         add(p, bCol);
         add(p, btn("✅  Zastosuj wygląd na zegarku", "#16A34A", "#15803D", v -> applyStyle()));
+        add(p, btn("🇵🇱  Język zegarka: polski (data dzień.miesiąc)", "#DC2626", "#B91C1C", v -> setPolish()));
         styleLabels();
 
         add(p, btn("↩️  Zakończ i wróć do zwykłego połączenia", "#64748B", "#475569", v -> finish()));
@@ -336,6 +337,18 @@ public class SdkActivity extends Activity {
             out("Wysłano wygląd: godzina " + POS[iPos][1] + ", nad: " + EL[iUp][1] + ", pod: " + EL[iDown][1] + ", kolor " + COLN[iCol]);
         } catch (Throwable t) {
             out("❌ Wygląd – błąd: " + t.getMessage());
+        }
+    }
+
+    private void setPolish() {
+        if (!need()) return;
+        try {
+            VPOperateManager.getInstance().settingDeviceLanguage(wr,
+                    d -> out("🇵🇱 Zegarek: " + d),
+                    com.veepoo.protocol.model.enums.ELanguage.POLISH);
+            out("Wysłano: język polski – data i dni tygodnia po polsku");
+        } catch (Throwable t) {
+            out("❌ Język – błąd: " + t.getMessage());
         }
     }
 
