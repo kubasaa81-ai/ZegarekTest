@@ -172,7 +172,44 @@ public class DashActivity extends Activity implements BleService.Listener {
     private ChartView chSteps;
     private android.widget.EditText etGoalSteps, etGoalSleep;
     private int page = 0;
-    private TextView tvWrite;
+    private TextView tvWrite, tvHc;
+
+    private void hcStatus() {
+        if (!HcSync.available(this)) {
+            tvHc.setText("Health Connect nie jest dostępny na tym telefonie.");
+            return;
+        }
+        HcSync.checkGranted(this, ok -> {
+            getSharedPreferences("hc", MODE_PRIVATE).edit().putBoolean("on", ok).apply();
+            tvHc.setText(ok
+                    ? "✅ Połączono. Dane z zegarka (kroki, tętno, ciśnienie, tlen, temperatura) wysyłają się automatycznie po każdym pobraniu historii.\nW Samsung Health włącz odczyt: Ustawienia → Health Connect → Mój Zegarek."
+                    : "Nie połączono. Stuknij „Połącz z Health Connect” i zaznacz wszystkie zgody.");
+        });
+    }
+
+    private void hcConnect() {
+        if (!HcSync.available(this)) { toast("Health Connect niedostępny"); return; }
+        try {
+            startActivityForResult(HcSync.permissionIntent(this), 77);
+        } catch (Exception e) {
+            toast("Nie udało się otworzyć Health Connect: " + e.getMessage());
+        }
+    }
+
+    private void hcSend() {
+        HistStore.flush();
+        toast("Wysyłam…");
+        HcSync.syncRecent(this, msg -> { toast(msg); hcStatus(); });
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == 77) {
+            hcStatus();
+            tvHc.postDelayed(this::hcSend, 800);
+        }
+    }
 
     private void setFace(int idx) {
         send(0xC7, 0x01, idx);
@@ -354,6 +391,14 @@ public class DashActivity extends Activity implements BleService.Listener {
         tvWrite = card("");
         tvWrite.setTextSize(13);
         addCard(p2, tvWrite);
+        p2.addView(section("Samsung Health (przez Health Connect)"));
+        tvHc = card("");
+        tvHc.setTextSize(13);
+        addCard(p2, tvHc);
+        p2.addView(row(
+                btn("Połącz z Health Connect", "#0EA5A4", v -> hcConnect()),
+                btn("Wyślij dane teraz", "#2F80ED", v -> hcSend())
+        ));
         p2.addView(section("Połączenie"));
         p2.addView(row(
                 btn("Odśwież dane", "#00897B", v -> refreshWatch()),
@@ -740,6 +785,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         super.onResume();
         BleService.listener = this;
         refresh();
+        hcStatus();
     }
 
     @Override
