@@ -33,6 +33,7 @@ public class MeasureActivity extends Activity {
     private Button bStop;
     private int kind = -1; // 0 ciśnienie, 1 tlen, 2 tętno, 3 EKG
     private int lastHr = 0, lastO2 = 0;
+    private float lastT = 0;
     private boolean saved = false;
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
@@ -232,8 +233,6 @@ public class MeasureActivity extends Activity {
             bStop.setVisibility(View.GONE);
         }
     }
-
-    private float lastT = 0;
 
     private final com.veepoo.protocol.listener.data.ITemptureDetectDataListener temp = d -> {
         prog(d.getProgress());
