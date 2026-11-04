@@ -140,6 +140,22 @@ public class SdkActivity extends Activity {
         add(p, btn("🕒  Ustaw godzinę i datę z telefonu", "#2563EB", "#1D4ED8", v -> setTime()));
         add(p, btn("😴  Pobierz sen (ostatnie noce)", "#4F46E5", "#4338CA", v -> readSleep()));
         add(p, btn("🖼️  Tarcza ze zdjęcia – wybierz zdjęcie", "#DB2777", "#BE185D", v -> pickPhoto()));
+        LinearLayout mr = new LinearLayout(this);
+        String[][] lv = {{"Wibracja: słaba", "#0EA5A4", "WEAK"}, {"średnia", "#0284C7", "MEDIUM"}, {"mocna", "#DC2626", "STRONG"}};
+        for (String[] x : lv) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMargins(dp(3), 0, dp(3), 0);
+            mr.addView(btn(x[0], x[1], x[1], v -> setMotor(x[2])), lp);
+        }
+        add(p, mr);
+        LinearLayout vr = new LinearLayout(this);
+        String[][] vol = {{"🔉 Głośność cicho", "4"}, {"🔊 średnio", "10"}, {"📢 max", "16"}};
+        for (String[] x : vol) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMargins(dp(3), 0, dp(3), 0);
+            vr.addView(btn(x[0], "#F59E0B", "#D97706", v -> setVolume(Integer.parseInt(x[1]))), lp);
+        }
+        add(p, vr);
         add(p, btn("↩️  Zakończ i wróć do zwykłego połączenia", "#64748B", "#475569", v -> finish()));
 
         pb = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -251,6 +267,45 @@ public class SdkActivity extends Activity {
     private void setTime() {
         if (!need()) return;
         VPOperateManager.getInstance().settingTime(wr, state -> out("🕒 Godzina ustawiona (odpowiedź " + state + ")"), now());
+    }
+
+    // ---------------- wibracja i głośność ----------------
+
+    private void setMotor(String level) {
+        if (!need()) return;
+        try {
+            VPOperateManager.getInstance().setMotorLevel(com.veepoo.protocol.model.enums.EMotorLevel.valueOf(level), wr,
+                    new com.veepoo.protocol.listener.data.IMotorOperateListener() {
+                        @Override public void onMotorLevelRead(com.veepoo.protocol.model.datas.MotorLevelData d) { }
+                        @Override public void onMotorLevelSetting(com.veepoo.protocol.model.datas.MotorLevelData d) {
+                            out(d.isSuccess() ? "📳 Siła wibracji ustawiona: " + d.getLevel() : "❌ Zegarek nie obsługuje zmiany siły wibracji");
+                        }
+                        @Override public void onMotorLevelReport(com.veepoo.protocol.model.datas.MotorLevelData d) { }
+                    });
+            out("Wysłano ustawienie wibracji: " + level);
+        } catch (Throwable t) {
+            out("Wibracja – błąd: " + t.getMessage());
+        }
+    }
+
+    private void setVolume(int v) {
+        if (!need()) return;
+        try {
+            VPOperateManager.getInstance().settingVolume(v, wr, new com.veepoo.protocol.listener.data.IMusicControlListener() {
+                @Override public void nextMusic() { }
+                @Override public void previousMusic() { }
+                @Override public void pauseAndPlayMusic() { }
+                @Override public void pauseMusic() { }
+                @Override public void playMusic() { }
+                @Override public void voiceUp() { }
+                @Override public void voiceDown() { }
+                @Override public void oprateMusicSuccess() { out("🔊 Głośność ustawiona: " + v); }
+                @Override public void oprateMusicFail() { out("❌ Zegarek nie przyjął zmiany głośności"); }
+            });
+            out("Wysłano głośność: " + v);
+        } catch (Throwable t) {
+            out("Głośność – błąd: " + t.getMessage());
+        }
     }
 
     // ---------------- sen ----------------
