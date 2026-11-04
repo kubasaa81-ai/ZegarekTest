@@ -146,7 +146,7 @@ public class MainActivity extends Activity implements BleService.Listener {
         ));
         root.addView(row(
                 btn("Hasło 0000", Color.parseColor("#283593"), v -> quick("Hasło 0000", 0xA1, 0x00, 0x00, 0x00, 0x00)),
-                btn("Bateria", Color.parseColor("#F9A825"), v -> quick("Bateria", 0x96, 0x01)),
+                btn("Bateria", Color.parseColor("#F9A825"), v -> quick("Bateria", 0xA0, 0x00)),
                 btn("Pobierz historię", Color.parseColor("#7B1FA2"), v -> quick("Pobierz historię", 0xDF, 0x00))
         ));
 

@@ -699,7 +699,7 @@ public class DashActivity extends Activity implements BleService.Listener {
         set(6, lastTemp != null ? lastTemp : "–", lastTemp != null ? "o " + tTemp : "");
         set(7, lastGlu != null ? lastGlu : "–", lastGlu != null ? "mmol/L o " + tGlu + " – orientacyjnie" : "");
         set(8, lastResp != null ? lastResp : "–", lastResp != null ? "o " + tResp : "");
-        set(9, today ? BleService.sBat : "–", today ? "skala zegarka" : "");
+        set(9, today ? BleService.sBat : "–", today ? "" : "");
         if (screenWanted == 0 && BleService.screenSec > 0) screenWanted = BleService.screenSec;
         tvWrite.setText((BleService.faceIdx >= 0 ? "Aktualna tarcza: " + (BleService.faceIdx + 1) + "\n" : "")
                 + (BleService.lastWrite.isEmpty() ? "Tu pojawi się potwierdzenie z zegarka." : BleService.lastWrite));
@@ -809,7 +809,7 @@ public class DashActivity extends Activity implements BleService.Listener {
 
     private void refreshWatch() {
         send(0xD8, 0x00);
-        send(0x96, 0x01);
+        send(0xA0, 0x00);
         send(0xDF, 0x00);
         toast("Pobieram dane z zegarka…");
     }

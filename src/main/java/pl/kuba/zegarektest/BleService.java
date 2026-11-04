@@ -446,8 +446,15 @@ public class BleService extends Service {
             if (op == 0xB5 && v.length >= 3) {
                 return "znajdź zegarek: " + hex(new byte[]{v[1], v[2]});
             }
-            if (op == 0x96 && v.length >= 3 && u8(v, 1) == 1) {
-                sBat = "poziom " + u8(v, 2);
+            if (op == 0xA0 && v.length >= 7) {
+                int pct = u8(v, 6);
+                boolean isPct = u8(v, 5) == 1;
+                if (isPct && pct <= 100) {
+                    sBat = pct + "%";
+                    if (pct <= 15) alarm("bat", "Słaba bateria zegarka: " + pct + "% – podłącz ładowarkę", false);
+                } else {
+                    sBat = "poziom " + u8(v, 4);
+                }
                 notifyUi();
                 return "bateria zegarka: " + sBat;
             }
@@ -680,7 +687,7 @@ public class BleService extends Service {
             log("Automatycznie: hasło 0000, dane dnia, bateria, historia dnia");
             sendVeepoo(new byte[]{(byte) 0xA1, 0, 0, 0, 0});
             sendVeepoo(new byte[]{(byte) 0xD8, 0});
-            sendVeepoo(new byte[]{(byte) 0x96, 1});
+            sendVeepoo(new byte[]{(byte) 0xA0, 0});
             sendVeepoo(new byte[]{(byte) 0xDF, 0});
             sendVeepoo(new byte[]{(byte) 0xB4, 0x02});
             sendVeepoo(new byte[]{(byte) 0xC7, 0x02});
@@ -702,6 +709,7 @@ public class BleService extends Service {
         public void run() {
             if (gatt == null) return;
             sendVeepoo(new byte[]{(byte) 0xD8, 0});
+            sendVeepoo(new byte[]{(byte) 0xA0, 0});
             if (++pollCount % 3 == 0) sendVeepoo(new byte[]{(byte) 0xDF, 0});
             main.postDelayed(this, 5 * 60 * 1000);
         }
