@@ -140,4 +140,29 @@ public class Sdk {
     public static boolean supported(Object status) {
         return status != null && String.valueOf(status).equals("SUPPORT");
     }
+
+    /** Godziny działania „ruch ręki zapala ekran”: {od, do}; {0,23} = cały dzień. */
+    public static final int[][] WRIST = {{0, 23}, {7, 22}, {6, 23}, {8, 21}};
+
+    /** Ustawia w zegarku podświetlanie ruchem ręki wg ustawień aplikacji (czułość zostaje z zegarka). */
+    public static void wrist(Context c, Out out) {
+        if (!ready) { out.line("⚠️ Zegarek nie jest teraz połączony"); return; }
+        android.content.SharedPreferences us = c.getSharedPreferences("ust", Context.MODE_PRIVATE);
+        boolean on = us.getBoolean("nadgOn", true);
+        int[] h = WRIST[Math.min(WRIST.length - 1, us.getInt("nadgGodz", 0))];
+        try {
+            m().readNightTurnWriste(wr, d -> {
+                int lvl = d.getLevel() > 0 ? d.getLevel() : (d.getDefaultLevel() > 0 ? d.getDefaultLevel() : 5);
+                try {
+                    m().settingNightTurnWriste(wr, x -> out.line("✅ Ruch ręki: " + (x.isNightTureWirsteStatusOpen() ? "włączony" : "wyłączony")
+                                    + " (" + x.getOprateStauts() + ")"),
+                            new com.veepoo.protocol.model.settings.NightTurnWristSetting(on,
+                                    new com.veepoo.protocol.model.datas.TimeData(h[0], 0),
+                                    new com.veepoo.protocol.model.datas.TimeData(h[1], h[1] == 23 ? 59 : 0), lvl));
+                } catch (Throwable t) { out.line("Ruch ręki: " + t.getMessage()); }
+            });
+        } catch (Throwable t) {
+            out.line("Ruch ręki: " + t.getMessage());
+        }
+    }
 }

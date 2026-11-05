@@ -260,9 +260,22 @@ public class WatchSettingsActivity extends Activity {
         // ---- noc ----
         section(p, "Noc");
         LinearLayout gN = group(p);
-        LinearLayout rn = row(gN, "🌙", "#4338CA", "Ekran nie zapala się w nocy", "Ruch ręki nie budzi ekranu 22:00–7:00");
+        SharedPreferences us = getSharedPreferences("ust", MODE_PRIVATE);
+        LinearLayout rn = row(gN, "✋", "#4338CA", "Ekran zapala się po ruchu ręki", "");
         tvNight = (TextView) rn.getTag();
-        sw(rn, getSharedPreferences("ust", MODE_PRIVATE).getBoolean("nocEkran", false), (c, on) -> nightWrist(on));
+        swWrist = sw(rn, us.getBoolean("nadgOn", true), (c, on) -> {
+            us.edit().putBoolean("nadgOn", on).apply();
+            Sdk.wrist(this, x -> { info(x); main.post(this::wristLabel); });
+            wristLabel();
+        });
+        LinearLayout rnh = row(gN, "🕗", "#64748B", "Kiedy działa ruch ręki", "");
+        tvWristH = (TextView) rnh.getTag();
+        rnh.setOnClickListener(v -> {
+            us.edit().putInt("nadgGodz", (us.getInt("nadgGodz", 0) + 1) % Sdk.WRIST.length).apply();
+            wristLabel();
+            Sdk.wrist(this, x -> { info(x); main.post(this::wristLabel); });
+        });
+        wristLabel();
         SharedPreferences q = quiet(this);
         LinearLayout rq = row(gN, "🔕", "#334155", "Cisza nocna", "");
         tvQuiet = (TextView) rq.getTag();
@@ -437,15 +450,14 @@ public class WatchSettingsActivity extends Activity {
         }
     }
 
-    private void nightWrist(boolean on) {
-        getSharedPreferences("ust", MODE_PRIVATE).edit().putBoolean("nocEkran", on).apply();
-        if (!need()) return;
-        try {
-            // ekran NIE zapala się ruchem ręki w nocy = funkcja „podnieś nadgarstek” wyłączona w tych godzinach
-            Sdk.m().settingNightTurnWriste(Sdk.wr, d -> info("✅ Noc: " + d.getOprateStauts()),
-                    new NightTurnWristSetting(!on, new TimeData(22, 0), new TimeData(7, 0), 5));
-        } catch (Throwable t) {
-            info("❌ " + t.getMessage());
-        }
+    private Switch swWrist;
+    private TextView tvWristH;
+
+    private void wristLabel() {
+        SharedPreferences us = getSharedPreferences("ust", MODE_PRIVATE);
+        int[] h = Sdk.WRIST[Math.min(Sdk.WRIST.length - 1, us.getInt("nadgGodz", 0))];
+        sub(tvNight, us.getBoolean("nadgOn", true) ? "Włączone ✓" : "Wyłączone – ekran zapalisz tylko przyciskiem");
+        sub(tvWristH, (h[0] == 0 && h[1] == 23 ? "Cały dzień i noc" : String.format(Locale.US, "%d:00–%d:00 (w nocy nie)", h[0], h[1]))
+                + "  ·  dotknij, by zmienić");
     }
 }

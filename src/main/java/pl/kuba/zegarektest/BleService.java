@@ -309,6 +309,14 @@ public class BleService extends Service {
         } catch (Throwable t) { log("Obsługa połączeń z zegarka: " + t); }
         try { Sdk.m().settingMusicControlListener(music); } catch (Throwable t) { log("Muzyka: " + t); }
         main.postDelayed(() -> Weather.maybeSend(this, this::log, false), 45000);
+        // naprawa z wersji 5.0: stary przełącznik „noc” wyłączał ruch ręki na cały dzień
+        android.content.SharedPreferences us = getSharedPreferences("ust", MODE_PRIVATE);
+        if (!us.getBoolean("nadgNaprawa", false)) {
+            main.postDelayed(() -> Sdk.wrist(this, x -> {
+                log(x);
+                if (x.startsWith("✅")) us.edit().putBoolean("nadgNaprawa", true).remove("nocEkran").apply();
+            }), 8000);
+        }
         setState("Połączony");
         notifyUi();
         main.postDelayed(() -> {
