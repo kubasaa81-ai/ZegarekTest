@@ -225,30 +225,23 @@ public class WatchSettingsActivity extends Activity {
         pill(rv, "+", "#FEF3C7", "#B45309", v -> volume(2));
         volLabel();
         SharedPreferences pw = getSharedPreferences("powiad", MODE_PRIVATE);
-        LinearLayout rc = row(gS, "📞", "#16A34A", "Ekran dzwonienia na zegarku",
-                "Przy połączeniu zegarek dzwoni i pokazuje przyciski odrzuć / wycisz. Wyłącz, by był tylko napis.");
-        sw(rc, pw.getBoolean("ekranPol", true), (c, on) -> pw.edit().putBoolean("ekranPol", on).apply());
+        LinearLayout rc = row(gS, "📞", "#16A34A", "Dodatkowy napis o połączeniu",
+                "Zegarek sam dzwoni przy połączeniu (Bluetooth telefonu). Włącz, jeśli chcesz też napis „📞 Dzwoni: …” jak przy SMS.");
+        sw(rc, pw.getBoolean("napisPol", false), (c, on) -> pw.edit().putBoolean("napisPol", on).apply());
         LinearLayout rr = row(gS, "📵", "#DC2626", "Odrzucanie z zegarka",
                 checkSelfPermission(android.Manifest.permission.ANSWER_PHONE_CALLS) == android.content.pm.PackageManager.PERMISSION_GRANTED
                         ? "✅ Zgoda udzielona – „odrzuć” na zegarku rozłącza" : "Dotknij, by pozwolić rozłączać połączenie z zegarka");
         rr.setOnClickListener(v -> requestPermissions(new String[]{android.Manifest.permission.ANSWER_PHONE_CALLS}, 7));
-        LinearLayout rt = row(gS, "🔔", "#7C3AED", "Test połączenia", "Zegarek zachowa się jak przy prawdziwym połączeniu (10 s)");
+        LinearLayout rt = row(gS, "🔔", "#7C3AED", "Test napisu o połączeniu", "Zegarek pokaże „📞 Dzwoni: Test”");
         rt.setOnClickListener(v -> {
             BleService s = BleService.instance;
             if (s == null || !s.linked()) { info("⚠️ Zegarek nie jest połączony"); return; }
-            info("Sprawdzam ustawienia powiadomień w zegarku…");
-            Sdk.enableMsgs(this::info, () -> {
-                BleService x0 = BleService.instance;
-                if (x0 == null) return;
-                x0.testCall("Mój Zegarek");
-                main.postDelayed(() -> { BleService x = BleService.instance; if (x != null) x.stopCall(); }, 10000);
-                main.postDelayed(() -> info("Wysłano test połączenia (połączenia w zegarku: " + Sdk.phoneStatus
-                        + ") – spójrz i posłuchaj zegarka"), 1500);
-            });
+            s.sendMessage(0x01, "📞 Dzwoni: Test", "Połączenie przychodzące");
+            info("Wysłano – spójrz na zegarek");
         });
         TextView note = new TextView(this);
-        note.setText("Zegarek ma jeden wbudowany dźwięk – nie da się wgrać innej melodii. Możesz zmienić głośność, "
-                + "a połączenia przez ekran dzwonienia dzwonią dłużej niż krótki sygnał przy SMS.");
+        note.setText("Zegarek ma jeden wbudowany dźwięk – nie da się wgrać innej melodii, można zmienić głośność. "
+                + "Przy połączeniu zegarek dzwoni sam, jeśli w telefonie (Ustawienia → Bluetooth) jest połączony jako urządzenie do rozmów.");
         note.setTextSize(12);
         note.setTextColor(Color.parseColor("#64748B"));
         note.setPadding(dp(12), dp(6), dp(12), 0);

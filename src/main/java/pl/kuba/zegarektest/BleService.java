@@ -901,16 +901,12 @@ public class BleService extends Service {
 
     /** Połączenie przychodzące: ekran dzwonienia zegarka (biblioteka) albo napis. */
     private void callRing(String name, String num) {
-        if (sdkLink && Sdk.ready && getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("ekranPol", true)) {
-            try {
-                Sdk.m().sendSocialMsgContent(Sdk.wr, new com.veepoo.protocol.model.settings.ContentPhoneSetting(
-                        com.veepoo.protocol.model.enums.ESocailMsg.PHONE, name, num == null ? "" : num));
-                callShown = true;
-                log("Połączenie → ekran dzwonienia na zegarku: " + name);
-                return;
-            } catch (Throwable t) { log("Ekran połączenia: " + t); }
+        // Zegarek sam pokazuje i dzwoni przy połączeniu (Bluetooth telefonu). Aplikacja może dodać napis jak SMS.
+        if (!getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("napisPol", false)) {
+            log("Połączenie: " + name + " (zegarek obsługuje sam przez Bluetooth)");
+            return;
         }
-        sendMessage(0x00, name, "");
+        sendMessage(0x01, "📞 Dzwoni: " + name, num == null || num.isEmpty() ? "Połączenie przychodzące" : num);
     }
 
     private void rejectCall() {
