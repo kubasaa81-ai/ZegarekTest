@@ -309,6 +309,7 @@ public class BleService extends Service {
         } catch (Throwable t) { log("Obsługa połączeń z zegarka: " + t); }
         try { Sdk.m().settingMusicControlListener(music); } catch (Throwable t) { log("Muzyka: " + t); }
         main.postDelayed(() -> Weather.maybeSend(this, this::log, false), 45000);
+        main.postDelayed(() -> Sdk.enableMsgs(this::log, null), 14000);
         // naprawa z wersji 5.0: stary przełącznik „noc” wyłączał ruch ręki na cały dzień
         android.content.SharedPreferences us = getSharedPreferences("ust", MODE_PRIVATE);
         if (!us.getBoolean("nadgNaprawa", false)) {

@@ -165,4 +165,57 @@ public class Sdk {
             out.line("Ruch ręki: " + t.getMessage());
         }
     }
+
+    public static volatile String phoneStatus = "";
+
+    private static boolean closed(com.veepoo.protocol.model.enums.EFunctionStatus st) {
+        return st == com.veepoo.protocol.model.enums.EFunctionStatus.SUPPORT_CLOSE;
+    }
+
+    /** Włącza w zegarku powiadomienia: połączenia, SMS, WhatsApp, Messenger, Facebook, inne. */
+    public static void enableMsgs(Out out, Runnable then) {
+        if (!ready) { out.line("⚠️ Zegarek nie jest teraz połączony"); return; }
+        final boolean[] done = {false};
+        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        Runnable fin = () -> { if (!done[0]) { done[0] = true; if (then != null) h.post(then); } };
+        try {
+            m().readSocialMsg(wr, new com.veepoo.protocol.listener.data.ISocialMsgDataListener() {
+                @Override
+                public void onSocialMsgSupportDataChange(com.veepoo.protocol.model.datas.FunctionSocailMsgData d) {
+                    if (done[0]) return;
+                    phoneStatus = String.valueOf(d.getPhone());
+                    boolean ch = false;
+                    com.veepoo.protocol.model.enums.EFunctionStatus open = com.veepoo.protocol.model.enums.EFunctionStatus.SUPPORT_OPEN;
+                    if (closed(d.getPhone())) { d.setPhone(open); ch = true; }
+                    if (closed(d.getMsg())) { d.setMsg(open); ch = true; }
+                    if (closed(d.getWhats())) { d.setWhats(open); ch = true; }
+                    if (closed(d.getMessenger())) { d.setMessenger(open); ch = true; }
+                    if (closed(d.getFacebook())) { d.setFacebook(open); ch = true; }
+                    if (closed(d.getOther())) { d.setOther(open); ch = true; }
+                    if (!ch) {
+                        out.line("Powiadomienia w zegarku: połączenia " + phoneStatus);
+                        fin.run();
+                        return;
+                    }
+                    out.line("Włączam w zegarku powiadomienia (połączenia były: " + phoneStatus + ")");
+                    try {
+                        m().settingSocialMsg(wr, new com.veepoo.protocol.listener.data.ISocialMsgDataListener() {
+                            @Override public void onSocialMsgSupportDataChange(com.veepoo.protocol.model.datas.FunctionSocailMsgData x) {
+                                phoneStatus = String.valueOf(x.getPhone());
+                                out.line("✅ Powiadomienia w zegarku włączone (połączenia: " + phoneStatus + ")");
+                                fin.run();
+                            }
+                            @Override public void onSocialMsgSupportDataChange2(com.veepoo.protocol.model.datas.FunctionSocailMsgData x) { }
+                        }, d);
+                    } catch (Throwable t) { out.line("Powiadomienia: " + t.getMessage()); fin.run(); }
+                }
+
+                @Override public void onSocialMsgSupportDataChange2(com.veepoo.protocol.model.datas.FunctionSocailMsgData d) { }
+            });
+        } catch (Throwable t) {
+            out.line("Powiadomienia: " + t.getMessage());
+            fin.run();
+        }
+        h.postDelayed(fin, 6000);
+    }
 }

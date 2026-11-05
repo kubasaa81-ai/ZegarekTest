@@ -236,9 +236,15 @@ public class WatchSettingsActivity extends Activity {
         rt.setOnClickListener(v -> {
             BleService s = BleService.instance;
             if (s == null || !s.linked()) { info("⚠️ Zegarek nie jest połączony"); return; }
-            s.testCall("Mój Zegarek");
-            main.postDelayed(() -> { BleService x = BleService.instance; if (x != null) x.stopCall(); }, 10000);
-            info("Wysłano test połączenia – spójrz i posłuchaj zegarka");
+            info("Sprawdzam ustawienia powiadomień w zegarku…");
+            Sdk.enableMsgs(this::info, () -> {
+                BleService x0 = BleService.instance;
+                if (x0 == null) return;
+                x0.testCall("Mój Zegarek");
+                main.postDelayed(() -> { BleService x = BleService.instance; if (x != null) x.stopCall(); }, 10000);
+                main.postDelayed(() -> info("Wysłano test połączenia (połączenia w zegarku: " + Sdk.phoneStatus
+                        + ") – spójrz i posłuchaj zegarka"), 1500);
+            });
         });
         TextView note = new TextView(this);
         note.setText("Zegarek ma jeden wbudowany dźwięk – nie da się wgrać innej melodii. Możesz zmienić głośność, "
