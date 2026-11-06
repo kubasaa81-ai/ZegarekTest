@@ -210,7 +210,7 @@ public class Sdk {
                             watchAll = Math.max(watchAll, g.all);
                             watchDeep = Math.max(watchDeep, g.deep);
                             watchLight = Math.max(watchLight, g.light);
-                            watchWakes += g.wakes;
+                            watchWakes = Math.max(watchWakes, g.wakes);
                             if (g.end >= lastEnd.end) lastEnd = g;
                             String ln = g.line == null ? "" : g.line;
                             for (int x = 0; x < ln.length(); x++) {
@@ -233,12 +233,15 @@ public class Sdk {
                             else if (ch == '0') light++;
                             if (ch == '2') {
                                 awakeRun++;
-                                if (asleep && awakeRun == 5) wakes++;
                             } else {
+                                if (asleep && awakeRun > 0) wakes++; // czuwanie między dwoma okresami snu
                                 asleep = true;
                                 awakeRun = 0;
                             }
                         }
+                        int maxSegWakes = 0;
+                        for (Seg g : night) maxSegWakes = Math.max(maxSegWakes, g.wakes);
+                        wakes = Math.max(wakes, maxSegWakes);
                         int all = deep + light;
                         if (!anyLine) { // brak linii – zaufaj zegarkowi, ale nie więcej niż czas w łóżku
                             all = Math.min(watchAll, len);
