@@ -99,7 +99,7 @@ public class Sdk {
     /** Jeden kawałek snu z zegarka. */
     static class Seg {
         long start, end; // minuty od epoki
-        int all, deep, light, wakes, quality;
+        int all, deep, light, wakes, quality, res = 5;
         String line;
         java.util.Calendar endCal;
     }
@@ -170,33 +170,96 @@ public class Sdk {
                 try {
                     java.util.List<Seg> l;
                     synchronized (segs) { l = new java.util.ArrayList<>(segs); }
+                    // rozdzielczość linii (1 lub 5 min na znak) i prawdziwy koniec kawałka
+                    for (Seg g : l) {
+                        String ln = g.line == null ? "" : g.line;
+                        int sleep5 = 0, sleep1 = 0;
+                        for (int x = 0; x < ln.length(); x++) {
+                            char ch = ln.charAt(x);
+                            if (ch == '0' || ch == '1') sleep5++;
+                            if (ch == '0' || ch == '1' || ch == '2') sleep1++;
+                        }
+                        boolean precise = ln.contains("3") || ln.contains("4")
+                                || (g.all > 0 && Math.abs(sleep1 - g.all) < Math.abs(sleep5 * 5 - g.all));
+                        g.res = precise ? 1 : 5;
+                        if (ln.length() > 0) g.end = Math.max(g.end, g.start + (long) ln.length() * g.res);
+                    }
                     java.util.Collections.sort(l, (a, b) -> Long.compare(a.start, b.start));
                     java.util.Set<String> written = new java.util.HashSet<>();
                     int i = 0;
                     while (i < l.size()) {
                         java.util.List<Seg> night = new java.util.ArrayList<>();
                         night.add(l.get(i));
+                        long maxEnd = l.get(i).end;
                         int k = i + 1;
-                        while (k < l.size() && l.get(k).start - night.get(night.size() - 1).end <= 180) night.add(l.get(k++));
-                        i = k;
-                        Seg first = night.get(0), last = night.get(night.size() - 1);
-                        int all = 0, deep = 0, light = 0, wakes = 0, q = 0;
-                        StringBuilder line = new StringBuilder();
-                        for (int n = 0; n < night.size(); n++) {
-                            Seg g = night.get(n);
-                            all += g.all; deep += g.deep; light += g.light; wakes += g.wakes; q = Math.max(q, g.quality);
-                            if (night.size() == 1) { line.append(g.line == null ? "" : g.line); continue; }
-                            if (n > 0) {
-                                long gap = g.start - night.get(n - 1).end;
-                                for (long x = 0; x < gap / 5; x++) line.append('2');
-                                wakes++;
-                            }
-                            line.append(to5min(g.line, g.end - g.start));
+                        while (k < l.size() && l.get(k).start - maxEnd <= 180) {
+                            night.add(l.get(k));
+                            maxEnd = Math.max(maxEnd, l.get(k).end);
+                            k++;
                         }
-                        String day = DAY.format(last.endCal.getTime());
+                        i = k;
+                        long S = night.get(0).start, E = maxEnd;
+                        int len = (int) Math.max(1, E - S);
+                        char[] tl = new char[len];
+                        java.util.Arrays.fill(tl, '2');
+                        boolean anyLine = false;
+                        int q = 0, watchAll = 0, watchDeep = 0, watchLight = 0, watchWakes = 0;
+                        Seg lastEnd = night.get(0);
+                        for (Seg g : night) {
+                            q = Math.max(q, g.quality);
+                            watchAll = Math.max(watchAll, g.all);
+                            watchDeep = Math.max(watchDeep, g.deep);
+                            watchLight = Math.max(watchLight, g.light);
+                            watchWakes += g.wakes;
+                            if (g.end >= lastEnd.end) lastEnd = g;
+                            String ln = g.line == null ? "" : g.line;
+                            for (int x = 0; x < ln.length(); x++) {
+                                char ch = ln.charAt(x);
+                                char code = g.res == 1 ? (ch == '0' ? '1' : (ch == '3' || ch == '4') ? '2' : '0')
+                                        : (ch == '1' ? '1' : ch == '0' ? '0' : '2');
+                                long off = g.start - S + (long) x * g.res;
+                                for (int r = 0; r < g.res; r++) {
+                                    long pos = off + r;
+                                    if (pos >= 0 && pos < len) tl[(int) pos] = code;
+                                }
+                                anyLine = true;
+                            }
+                        }
+                        int deep = 0, light = 0, wakes = 0;
+                        boolean asleep = false;
+                        int awakeRun = 0;
+                        for (char ch : tl) {
+                            if (ch == '1') deep++;
+                            else if (ch == '0') light++;
+                            if (ch == '2') {
+                                awakeRun++;
+                                if (asleep && awakeRun == 5) wakes++;
+                            } else {
+                                asleep = true;
+                                awakeRun = 0;
+                            }
+                        }
+                        int all = deep + light;
+                        if (!anyLine) { // brak linii – zaufaj zegarkowi, ale nie więcej niż czas w łóżku
+                            all = Math.min(watchAll, len);
+                            deep = Math.min(watchDeep, all);
+                            light = Math.min(watchLight, all - deep);
+                            wakes = watchWakes;
+                        }
+                        StringBuilder line = new StringBuilder();
+                        for (int x = 0; x < len; x += 5) {
+                            int d = 0, li = 0, a = 0;
+                            for (int r = x; r < Math.min(len, x + 5); r++) {
+                                if (tl[r] == '1') d++; else if (tl[r] == '0') li++; else a++;
+                            }
+                            line.append(d >= li && d >= a ? '1' : li >= a ? '0' : '2');
+                        }
+                        java.util.Calendar endCal = java.util.Calendar.getInstance();
+                        endCal.setTimeInMillis(E * 60000L);
+                        String day = DAY.format(endCal.getTime());
                         JSONObject j = new JSONObject();
-                        j.put("od", HM.format(new java.util.Date(first.start * 60000L)));
-                        j.put("do", HM.format(new java.util.Date(last.end * 60000L)));
+                        j.put("od", HM.format(new java.util.Date(S * 60000L)));
+                        j.put("do", HM.format(new java.util.Date(E * 60000L)));
                         j.put("min", all);
                         j.put("gleboki", deep);
                         j.put("plytki", light);
@@ -207,9 +270,9 @@ public class Sdk {
                         HistStore.putSleep(c, day, j);
                         written.add(day);
                         nights++;
-                        out.line(String.format(java.util.Locale.US, "Noc do %s: %s → %s, sen %dh %02dmin%s", day,
-                                j.getString("od"), j.getString("do"), all / 60, all % 60,
-                                night.size() > 1 ? " (sklejone " + night.size() + " części)" : ""));
+                        out.line(String.format(java.util.Locale.US, "Noc do %s: %s → %s, sen %dh %02dmin (w łóżku %dh %02dmin)%s", day,
+                                j.getString("od"), j.getString("do"), all / 60, all % 60, len / 60, len % 60,
+                                night.size() > 1 ? " – sklejone " + night.size() + " części" : ""));
                     }
                     // dni, które zegarek zgłosił, a których noc trafiła pod inny dzień – usuń stare, błędne wpisy
                     for (String d : days) if (!written.contains(d)) HistStore.removeSleep(c, d);
