@@ -248,6 +248,9 @@ public class WatchSettingsActivity extends Activity {
                 "Gdy w telefonie włączysz wyciszenie (nie wibracje), na zegarek nie idą powiadomienia ani przypomnienia – cisza i bez wibracji. "
                         + "Alarmy zdrowia przychodzą zawsze.");
         sw(rk, ust.getBoolean("ksiezyc", true), (c, on) -> ust.edit().putBoolean("ksiezyc", on).apply());
+        LinearLayout rp = row(gS, "📳", "#0F766E", "Połączenie przy wyciszonym telefonie",
+                "Telefon na wibracjach lub wyciszony → zegarek pokaże, kto dzwoni, krótko zawibruje i po 3 s przestanie dzwonić.");
+        sw(rp, ust.getBoolean("cichePol", true), (c, on) -> ust.edit().putBoolean("cichePol", on).apply());
         LinearLayout rc = row(gS, "📞", "#16A34A", "Dodatkowy napis o połączeniu",
                 "Zegarek sam dzwoni przy połączeniu (Bluetooth telefonu). Włącz, jeśli chcesz też napis „📞 Dzwoni: …” jak przy SMS.");
         sw(rc, pw.getBoolean("napisPol", false), (c, on) -> pw.edit().putBoolean("napisPol", on).apply());

@@ -995,6 +995,22 @@ public class BleService extends Service {
     private final BroadcastReceiver phoneReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context c, Intent i) {
+            String st0 = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE);
+            if (android.telephony.TelephonyManager.EXTRA_STATE_RINGING.equals(st0)) {
+                if (!ringingNow) {
+                    ringingNow = true;
+                    if (Sdk.ready && Sdk.phoneMuted(BleService.this)
+                            && getSharedPreferences("ust", MODE_PRIVATE).getBoolean("cichePol", true)) {
+                        log("Połączenie przy wyciszonym telefonie – zegarek tylko krótko zawibruje");
+                        Sdk.setVolume(0, BleService.this::log);
+                        main.removeCallbacks(hushCall);
+                        main.postDelayed(hushCall, 3000);
+                    }
+                }
+            } else if (st0 != null) {
+                ringingNow = false;
+                main.removeCallbacks(hushCall);
+            }
             if (!getSharedPreferences("powiad", MODE_PRIVATE).getBoolean("polaczenia", true)) return;
             String st = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE);
             String num = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER);
@@ -1018,6 +1034,17 @@ public class BleService extends Service {
                         || android.telephony.TelephonyManager.EXTRA_STATE_IDLE.equals(st)) stopCall();
             }
         }
+    };
+
+    private boolean ringingNow = false;
+
+    /** Telefon wyciszony: po chwili mówimy zegarkowi „koniec dzwonienia”, żeby przestał dzwonić. */
+    private final Runnable hushCall = () -> {
+        if (!ringingNow || !Sdk.ready) return;
+        try {
+            Sdk.m().offhookOrIdlePhone(Sdk.wr);
+            log("Zegarek: wyciszono dzwonienie (telefon jest wyciszony)");
+        } catch (Throwable t) { log("Wyciszanie dzwonienia: " + t); }
     };
 
     private String contactName(String num) {
