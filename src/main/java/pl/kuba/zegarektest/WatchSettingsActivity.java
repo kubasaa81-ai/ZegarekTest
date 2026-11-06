@@ -41,7 +41,17 @@ public class WatchSettingsActivity extends Activity {
 
     static SharedPreferences quiet(Context c) { return c.getSharedPreferences("cisza", MODE_PRIVATE); }
 
+    /** Telefon całkiem wyciszony (nie wibracje) i włączona opcja „jak księżyc”. */
+    public static boolean phoneSilentMoon(Context c) {
+        if (!c.getSharedPreferences("ust", MODE_PRIVATE).getBoolean("ksiezyc", true)) return false;
+        try {
+            android.media.AudioManager am = c.getSystemService(android.media.AudioManager.class);
+            return am.getRingerMode() == android.media.AudioManager.RINGER_MODE_SILENT;
+        } catch (Throwable t) { return false; }
+    }
+
     public static boolean quietNow(Context c) {
+        if (phoneSilentMoon(c)) return true;
         SharedPreferences s = quiet(c);
         if (!s.getBoolean("on", false)) return false;
         int[] q = QUIET[Math.min(QUIET.length - 1, s.getInt("godz", 0))];
@@ -234,6 +244,10 @@ public class WatchSettingsActivity extends Activity {
             if (on) Sdk.syncVolume(this, this::info);
             else Sdk.setVolume(ust.getInt("glosnosc", 16), this::info);
         });
+        LinearLayout rk = row(gS, "🌙", "#4338CA", "Telefon wyciszony = zegarek „jak księżyc”",
+                "Gdy w telefonie włączysz wyciszenie (nie wibracje), na zegarek nie idą powiadomienia ani przypomnienia – cisza i bez wibracji. "
+                        + "Alarmy zdrowia przychodzą zawsze.");
+        sw(rk, ust.getBoolean("ksiezyc", true), (c, on) -> ust.edit().putBoolean("ksiezyc", on).apply());
         LinearLayout rc = row(gS, "📞", "#16A34A", "Dodatkowy napis o połączeniu",
                 "Zegarek sam dzwoni przy połączeniu (Bluetooth telefonu). Włącz, jeśli chcesz też napis „📞 Dzwoni: …” jak przy SMS.");
         sw(rc, pw.getBoolean("napisPol", false), (c, on) -> pw.edit().putBoolean("napisPol", on).apply());

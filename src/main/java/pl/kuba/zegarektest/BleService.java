@@ -914,7 +914,8 @@ public class BleService extends Service {
     };
 
     private final Runnable ringerSync = () -> {
-        log("Tryb dźwięku w telefonie: " + (Sdk.phoneMuted(this) ? "wibracje/cisza" : "dźwięk"));
+        log("Tryb dźwięku w telefonie: " + (WatchSettingsActivity.phoneSilentMoon(this) ? "wyciszony – zegarek jak księżyc (bez powiadomień)"
+                : Sdk.phoneMuted(this) ? "wibracje – zegarek bez dźwięku" : "dźwięk"));
         if (Sdk.ready) Sdk.syncVolume(this, this::log);
     };
 
