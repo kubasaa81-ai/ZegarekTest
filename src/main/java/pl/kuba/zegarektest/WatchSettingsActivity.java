@@ -225,6 +225,15 @@ public class WatchSettingsActivity extends Activity {
         pill(rv, "+", "#FEF3C7", "#B45309", v -> volume(2));
         volLabel();
         SharedPreferences pw = getSharedPreferences("powiad", MODE_PRIVATE);
+        SharedPreferences ust = getSharedPreferences("ust", MODE_PRIVATE);
+        LinearLayout rm = row(gS, "🔕", "#475569", "Wycisz zegarek razem z telefonem",
+                "Telefon na wibracjach lub wyciszony → zegarek bez dźwięku, tylko wibracja. Dźwięk w telefonie → wraca głośność.");
+        sw(rm, ust.getBoolean("ciszaZTel", true), (c, on) -> {
+            ust.edit().putBoolean("ciszaZTel", on).apply();
+            if (!need()) return;
+            if (on) Sdk.syncVolume(this, this::info);
+            else Sdk.setVolume(ust.getInt("glosnosc", 16), this::info);
+        });
         LinearLayout rc = row(gS, "📞", "#16A34A", "Dodatkowy napis o połączeniu",
                 "Zegarek sam dzwoni przy połączeniu (Bluetooth telefonu). Włącz, jeśli chcesz też napis „📞 Dzwoni: …” jak przy SMS.");
         sw(rc, pw.getBoolean("napisPol", false), (c, on) -> pw.edit().putBoolean("napisPol", on).apply());
@@ -368,6 +377,10 @@ public class WatchSettingsActivity extends Activity {
         int v = Math.max(0, Math.min(16, s.getInt("glosnosc", 16) + d));
         s.edit().putInt("glosnosc", v).apply();
         volLabel();
+        if (s.getBoolean("ciszaZTel", true) && Sdk.phoneMuted(this)) {
+            info("Zapisano " + v + " – telefon jest wyciszony, więc zegarek zostaje cichy do włączenia dźwięku w telefonie");
+            return;
+        }
         try {
             Sdk.m().settingVolume(v, Sdk.wr, new com.veepoo.protocol.listener.data.IMusicControlListener() {
                 @Override public void nextMusic() { }

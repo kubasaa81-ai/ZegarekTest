@@ -310,6 +310,7 @@ public class BleService extends Service {
         try { Sdk.m().settingMusicControlListener(music); } catch (Throwable t) { log("Muzyka: " + t); }
         main.postDelayed(() -> Weather.maybeSend(this, this::log, false), 45000);
         main.postDelayed(() -> Sdk.enableMsgs(this::log, null), 14000);
+        main.postDelayed(() -> Sdk.syncVolume(this, this::log), 18000);
         // naprawa z wersji 5.0: stary przełącznik „noc” wyłączał ruch ręki na cały dzień
         android.content.SharedPreferences us = getSharedPreferences("ust", MODE_PRIVATE);
         if (!us.getBoolean("nadgNaprawa", false)) {
@@ -447,6 +448,9 @@ public class BleService extends Service {
         try {
             registerReceiver(phoneReceiver, new IntentFilter(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED));
         } catch (Exception ignored) { }
+        try {
+            registerReceiver(ringerReceiver, new IntentFilter(android.media.AudioManager.RINGER_MODE_CHANGED_ACTION));
+        } catch (Exception ignored) { }
         IntentFilter f = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(btReceiver, f, Context.RECEIVER_EXPORTED);
@@ -496,6 +500,7 @@ public class BleService extends Service {
     public void onDestroy() {
         try { unregisterReceiver(btReceiver); } catch (Exception ignored) { }
         try { unregisterReceiver(phoneReceiver); } catch (Exception ignored) { }
+        try { unregisterReceiver(ringerReceiver); } catch (Exception ignored) { }
         closeGatt();
         main.removeCallbacks(remindTick);
         if (statusReg) { try { Sdk.m().unregisterConnectStatusListener(mac, statusL); } catch (Throwable ignored) { } statusReg = false; }
@@ -899,6 +904,19 @@ public class BleService extends Service {
     }
 
     private boolean callShown = false;
+
+    private final BroadcastReceiver ringerReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            main.removeCallbacks(ringerSync);
+            main.postDelayed(ringerSync, 800);
+        }
+    };
+
+    private final Runnable ringerSync = () -> {
+        log("Tryb dźwięku w telefonie: " + (Sdk.phoneMuted(this) ? "wibracje/cisza" : "dźwięk"));
+        if (Sdk.ready) Sdk.syncVolume(this, this::log);
+    };
 
     public void testCall(String name) { callRing(name, "600100200"); }
 

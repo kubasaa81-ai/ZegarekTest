@@ -370,4 +370,39 @@ public class Sdk {
         }
         h.postDelayed(fin, 6000);
     }
+
+    /** Ustawia głośność zegarka (0 = cisza, 16 = maksimum). */
+    public static void setVolume(int v, Out out) {
+        if (!ready) return;
+        try {
+            m().settingVolume(v, wr, new com.veepoo.protocol.listener.data.IMusicControlListener() {
+                @Override public void nextMusic() { }
+                @Override public void previousMusic() { }
+                @Override public void pauseAndPlayMusic() { }
+                @Override public void pauseMusic() { }
+                @Override public void playMusic() { }
+                @Override public void voiceUp() { }
+                @Override public void voiceDown() { }
+                @Override public void oprateMusicSuccess() { out.line(v == 0 ? "🔕 Zegarek wyciszony (wibracja zostaje)" : "🔊 Głośność zegarka: " + v); }
+                @Override public void oprateMusicFail() { out.line("Zegarek nie przyjął głośności"); }
+            });
+        } catch (Throwable t) {
+            out.line("Głośność: " + t.getMessage());
+        }
+    }
+
+    /** true, gdy telefon jest na wibracjach albo wyciszony. */
+    public static boolean phoneMuted(Context c) {
+        try {
+            android.media.AudioManager am = c.getSystemService(android.media.AudioManager.class);
+            return am.getRingerMode() != android.media.AudioManager.RINGER_MODE_NORMAL;
+        } catch (Throwable t) { return false; }
+    }
+
+    /** Głośność zegarka zgodna z telefonem (gdy włączona opcja „wycisz razem z telefonem”). */
+    public static void syncVolume(Context c, Out out) {
+        android.content.SharedPreferences us = c.getSharedPreferences("ust", Context.MODE_PRIVATE);
+        if (!us.getBoolean("ciszaZTel", true)) return;
+        setVolume(phoneMuted(c) ? 0 : us.getInt("glosnosc", 16), out);
+    }
 }
