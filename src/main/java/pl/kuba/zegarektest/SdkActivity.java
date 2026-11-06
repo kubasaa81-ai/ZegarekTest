@@ -158,6 +158,13 @@ public class SdkActivity extends Activity {
         if (!shared) add(p, btn("🔗  1. Połącz (biblioteka HBand)", "#16A34A", "#15803D", v -> connect()));
         add(p, btn("🕒  Ustaw godzinę i datę z telefonu", "#2563EB", "#1D4ED8", v -> setTime()));
         add(p, btn("😴  Pobierz sen (ostatnie noce)", "#4F46E5", "#4338CA", v -> readSleep()));
+        bDark = btn("", "#374151", "#111827", v -> {
+            android.content.SharedPreferences sp = getSharedPreferences("ust", MODE_PRIVATE);
+            sp.edit().putInt("przyciemn", (sp.getInt("przyciemn", 0) + 1) % DARK.length).apply();
+            darkLabel();
+        });
+        darkLabel();
+        add(p, bDark);
         add(p, btn("🖼️  Tarcza ze zdjęcia – wybierz zdjęcie", "#DB2777", "#BE185D", v -> pickPhoto()));
         LinearLayout mr = new LinearLayout(this);
         String[][] lv = {{"Wibracja: słaba", "#0EA5A4", "WEAK"}, {"średnia", "#0284C7", "MEDIUM"}, {"mocna", "#DC2626", "STRONG"}};
@@ -332,8 +339,11 @@ public class SdkActivity extends Activity {
             {"LEFT_TOP", "lewa góra"}, {"RIGHT_TOP", "prawa góra"}, {"LEFT_BOTTOM", "lewy dół"}, {"RIGHT_BOTTOM", "prawy dół"}};
     private static final String[][] EL = {{"DATE_STYLE_1", "data"}, {"DATE_STYLE_2", "data (styl 2)"}, {"BLUETOOTH_BATTERY", "bateria"},
             {"STEP", "kroki"}, {"HEART", "tętno"}, {"KCAL", "kalorie"}, {"DISTANCE", "dystans"}, {"SLEEP", "sen"}, {"NONE", "nic"}};
-    private static final int[] COL = {0xFFFFFF, 0x000000, 0xFFD700, 0x00E5FF, 0xFF4081, 0x76FF03};
-    private static final String[] COLN = {"biały", "czarny", "złoty", "turkusowy", "różowy", "zielony"};
+    private static final int[] COL = {0xFFFFFF, 0x000000, 0xFFD700, 0x00E5FF, 0xFF4081, 0x76FF03,
+            0x9E9E9E, 0x424242, 0x1A237E, 0x0D47A1, 0x880E4F, 0x7F0000, 0x1B5E20, 0x004D40, 0x4E342E, 0xE65100, 0x4A148C};
+    private static final String[] COLN = {"biały", "czarny", "złoty", "turkusowy", "różowy", "zielony",
+            "szary", "grafitowy", "granatowy", "ciemnoniebieski", "bordowy", "ciemnoczerwony", "ciemnozielony",
+            "morski", "brązowy", "ciemnopomarańczowy", "fioletowy"};
     private int iPos = 0, iUp = 0, iDown = 2, iCol = 0;
     private Button bPos, bUp, bDown, bCol;
 
@@ -342,6 +352,14 @@ public class SdkActivity extends Activity {
         bUp.setText("Nad godziną: " + EL[iUp][1]);
         bDown.setText("Pod godziną: " + EL[iDown][1]);
         bCol.setText("Kolor napisów: " + COLN[iCol]);
+        GradientDrawable cg = new GradientDrawable();
+        cg.setColor(0xFF000000 | COL[iCol]);
+        cg.setCornerRadius(dp(18));
+        cg.setStroke(dp(2), Color.parseColor("#94A3B8"));
+        bCol.setBackground(cg);
+        int c = COL[iCol];
+        int lum = ((c >> 16 & 255) * 299 + (c >> 8 & 255) * 587 + (c & 255) * 114) / 1000;
+        bCol.setTextColor(lum > 150 ? Color.BLACK : Color.WHITE);
     }
 
     private void applyStyle() {
@@ -469,7 +487,9 @@ public class SdkActivity extends Activity {
         if (src == null) throw new Exception("nieznany format");
         int side = Math.min(src.getWidth(), src.getHeight());
         Bitmap sq = Bitmap.createBitmap(src, (src.getWidth() - side) / 2, (src.getHeight() - side) / 2, side, side);
-        Bitmap sc = Bitmap.createScaledBitmap(sq, dialW, dialH, true);
+        Bitmap sc = Bitmap.createScaledBitmap(sq, dialW, dialH, true).copy(Bitmap.Config.ARGB_8888, true);
+        int dk = DARK[Math.min(DARK.length - 1, getSharedPreferences("ust", MODE_PRIVATE).getInt("przyciemn", 0))];
+        if (dk > 0) new android.graphics.Canvas(sc).drawColor(Color.argb(dk * 255 / 100, 0, 0, 0));
         File dir = getExternalFilesDir("tarcze");
         if (dir == null) dir = getFilesDir();
         //noinspection ResultOfMethodCallIgnored
@@ -479,6 +499,14 @@ public class SdkActivity extends Activity {
             sc.compress(Bitmap.CompressFormat.PNG, 100, fo);
         }
         return f.getAbsolutePath();
+    }
+
+    private static final int[] DARK = {0, 25, 40, 55, 70};
+    private Button bDark;
+
+    private void darkLabel() {
+        int d = DARK[Math.min(DARK.length - 1, getSharedPreferences("ust", MODE_PRIVATE).getInt("przyciemn", 0))];
+        bDark.setText("🌑  Przyciemnienie zdjęcia: " + (d == 0 ? "brak" : d + "%") + "  (dotknij, by zmienić)");
     }
 
     private boolean stepDone = false;
