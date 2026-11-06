@@ -96,30 +96,66 @@ public class Sdk {
         return null;
     }
 
-    /** Pobiera sen z ostatnich nocy i zapisuje w historii. */
+    /** Jeden kawałek snu z zegarka. */
+    static class Seg {
+        long start, end; // minuty od epoki
+        int all, deep, light, wakes, quality;
+        String line;
+        java.util.Calendar endCal;
+    }
+
+    private static long minutes(com.veepoo.protocol.model.datas.TimeData t, java.util.Calendar out) {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.clear();
+        c.set(t.getYear(), t.getMonth() - 1, t.getDay(), t.getHour(), t.getMinute(), 0);
+        if (out != null) out.setTimeInMillis(c.getTimeInMillis());
+        return c.getTimeInMillis() / 60000L;
+    }
+
+    /** Linia faz w zapisie co 5 min: 0 płytki, 1 głęboki, 2 czuwanie. */
+    private static String to5min(String line, long span) {
+        if (line == null) line = "";
+        boolean precise = line.contains("3") || line.contains("4") || (span > 0 && line.length() >= span * 0.8);
+        if (!precise) return line;
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < line.length(); i += 5) {
+            char ch = line.charAt(i);
+            b.append(ch == '0' ? '1' : (ch == '3' || ch == '4') ? '2' : '0');
+        }
+        return b.toString();
+    }
+
+    private static final java.text.SimpleDateFormat DAY = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
+    private static final java.text.SimpleDateFormat HM = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US);
+
+    /** Pobiera sen z ostatnich nocy, skleja kawałki jednej nocy i zapisuje w historii. */
     public static void readSleep(Context ctx, Out out, Runnable done) {
         final Context c = ctx.getApplicationContext();
-        final int[] n = {0};
+        final java.util.List<Seg> segs = new java.util.ArrayList<>();
+        final java.util.Set<String> days = new java.util.HashSet<>();
         m().readSleepData(wr, new ISleepDataListener() {
             @Override
             public void onSleepDataChange(String day, SleepData s) {
                 try {
-                    String down = s.getSleepDown() == null ? "?" : s.getSleepDown().getClock();
-                    String up = s.getSleepUp() == null ? "?" : s.getSleepUp().getClock();
-                    String date = s.getDate() != null ? s.getDate() : day;
-                    int all = s.getAllSleepTime(), deep = s.getDeepSleepTime(), light = s.getLowSleepTime();
-                    JSONObject j = new JSONObject();
-                    j.put("od", down);
-                    j.put("do", up);
-                    j.put("min", all);
-                    j.put("gleboki", deep);
-                    j.put("plytki", light);
-                    j.put("pobudki", s.getWakeCount());
-                    j.put("jakosc", s.getSleepQulity());
-                    j.put("linia", s.getSleepLine());
-                    HistStore.putSleep(c, date, j);
-                    n[0]++;
-                    out.line(String.format("Sen – noc do %s: %s → %s, %dh %02dmin", date, down, up, all / 60, all % 60));
+                    if (s.getDate() != null) days.add(s.getDate());
+                    if (s.getSleepDown() == null || s.getSleepUp() == null) return;
+                    Seg g = new Seg();
+                    g.endCal = java.util.Calendar.getInstance();
+                    g.start = minutes(s.getSleepDown(), null);
+                    g.end = minutes(s.getSleepUp(), g.endCal);
+                    if (g.end <= g.start) return;
+                    g.all = s.getAllSleepTime();
+                    g.deep = s.getDeepSleepTime();
+                    g.light = s.getLowSleepTime();
+                    g.wakes = s.getWakeCount();
+                    g.quality = s.getSleepQulity();
+                    g.line = s.getSleepLine();
+                    synchronized (segs) {
+                        for (Seg o : segs) if (o.start == g.start) return; // duplikat
+                        segs.add(g);
+                    }
+                    out.line(String.format(java.util.Locale.US, "Sen – kawałek %s → %s (%d min, zegarek: dzień %s)",
+                            s.getSleepDown().getClock(), s.getSleepUp().getClock(), g.all, s.getDate()));
                 } catch (Exception e) {
                     out.line("Sen (surowo): " + s);
                 }
@@ -130,8 +166,58 @@ public class Sdk {
 
             @Override
             public void onReadSleepComplete() {
+                int nights = 0;
+                try {
+                    java.util.List<Seg> l;
+                    synchronized (segs) { l = new java.util.ArrayList<>(segs); }
+                    java.util.Collections.sort(l, (a, b) -> Long.compare(a.start, b.start));
+                    java.util.Set<String> written = new java.util.HashSet<>();
+                    int i = 0;
+                    while (i < l.size()) {
+                        java.util.List<Seg> night = new java.util.ArrayList<>();
+                        night.add(l.get(i));
+                        int k = i + 1;
+                        while (k < l.size() && l.get(k).start - night.get(night.size() - 1).end <= 180) night.add(l.get(k++));
+                        i = k;
+                        Seg first = night.get(0), last = night.get(night.size() - 1);
+                        int all = 0, deep = 0, light = 0, wakes = 0, q = 0;
+                        StringBuilder line = new StringBuilder();
+                        for (int n = 0; n < night.size(); n++) {
+                            Seg g = night.get(n);
+                            all += g.all; deep += g.deep; light += g.light; wakes += g.wakes; q = Math.max(q, g.quality);
+                            if (night.size() == 1) { line.append(g.line == null ? "" : g.line); continue; }
+                            if (n > 0) {
+                                long gap = g.start - night.get(n - 1).end;
+                                for (long x = 0; x < gap / 5; x++) line.append('2');
+                                wakes++;
+                            }
+                            line.append(to5min(g.line, g.end - g.start));
+                        }
+                        String day = DAY.format(last.endCal.getTime());
+                        JSONObject j = new JSONObject();
+                        j.put("od", HM.format(new java.util.Date(first.start * 60000L)));
+                        j.put("do", HM.format(new java.util.Date(last.end * 60000L)));
+                        j.put("min", all);
+                        j.put("gleboki", deep);
+                        j.put("plytki", light);
+                        j.put("pobudki", wakes);
+                        j.put("jakosc", q);
+                        j.put("linia", line.toString());
+                        if (night.size() > 1) j.put("czesci", night.size());
+                        HistStore.putSleep(c, day, j);
+                        written.add(day);
+                        nights++;
+                        out.line(String.format(java.util.Locale.US, "Noc do %s: %s → %s, sen %dh %02dmin%s", day,
+                                j.getString("od"), j.getString("do"), all / 60, all % 60,
+                                night.size() > 1 ? " (sklejone " + night.size() + " części)" : ""));
+                    }
+                    // dni, które zegarek zgłosił, a których noc trafiła pod inny dzień – usuń stare, błędne wpisy
+                    for (String d : days) if (!written.contains(d)) HistStore.removeSleep(c, d);
+                } catch (Exception e) {
+                    out.line("Sen – błąd sklejania: " + e);
+                }
                 HistStore.flush();
-                out.line("Sen pobrany (nocy: " + n[0] + ")");
+                out.line("Sen pobrany (nocy: " + nights + ")");
                 if (done != null) done.run();
             }
         }, watchDays);

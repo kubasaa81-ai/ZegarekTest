@@ -338,12 +338,15 @@ public class BleService extends Service {
         if (!Sdk.ready || busySdk) return;
         String t = today();
         android.content.SharedPreferences sp = getSharedPreferences("ust", MODE_PRIVATE);
-        if (t.equals(sp.getString("senDzien", "")) ) return;
-        if (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) < 6) return;
+        int hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        if (hour < 6) return;
+        // pierwszy raz po 6:00, potem jeszcze co 3 h do 14:00 (gdy wstajesz później, noc się dopełni)
+        boolean doneToday = t.equals(sp.getString("senDzien", ""));
+        if (doneToday && (hour >= 15 || System.currentTimeMillis() - sp.getLong("senCzas", 0) < 3 * 3600 * 1000L)) return;
         log("Automatycznie: pobieram sen");
         try {
             Sdk.readSleep(this, this::log, () -> {
-                sp.edit().putString("senDzien", t).apply();
+                sp.edit().putString("senDzien", t).putLong("senCzas", System.currentTimeMillis()).apply();
                 notifyUi();
             });
         } catch (Throwable e) { log("Sen: " + e); }

@@ -95,6 +95,13 @@ public class HistStore {
         } catch (Exception ignored) { }
     }
 
+    public static synchronized void removeSleep(Context c, String day) {
+        try {
+            JSONObject o = load(c, day);
+            if (o.has("sleep")) { o.remove("sleep"); saveSoon(c, day); }
+        } catch (Exception ignored) { }
+    }
+
     /** Podsumowanie dnia (kroki, metry, kcal). */
     public static synchronized void putDay(Context c, String day, long steps, long meters, long kcal) {
         try {
