@@ -125,6 +125,51 @@ public class Sdk {
         return b.toString();
     }
 
+    /** Pobudki z historii 5-min: kroki w nocy albo tętno wyraźnie wyższe niż zwykle w tę noc. */
+    static int wakesFromHistory(Context c, long S, long E) {
+        try {
+            java.util.List<long[]> pts = new java.util.ArrayList<>(); // {minuta, kroki, tętno}
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            java.util.Set<String> dayKeys = new java.util.LinkedHashSet<>();
+            dayKeys.add(DAY.format(new java.util.Date(S * 60000L)));
+            dayKeys.add(DAY.format(new java.util.Date(E * 60000L)));
+            for (String dk : dayKeys) {
+                JSONObject r = HistStore.load(c, dk).optJSONObject("r");
+                if (r == null) continue;
+                java.util.Date d0 = DAY.parse(dk);
+                java.util.Iterator<String> it = r.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    JSONObject x = r.optJSONObject(k);
+                    if (x == null || k.length() < 5) continue;
+                    cal.setTime(d0);
+                    cal.set(java.util.Calendar.HOUR_OF_DAY, Integer.parseInt(k.substring(0, 2)));
+                    cal.set(java.util.Calendar.MINUTE, Integer.parseInt(k.substring(3, 5)));
+                    long m = cal.getTimeInMillis() / 60000L;
+                    if (m <= S + 10 || m >= E - 5) continue;
+                    pts.add(new long[]{m, x.optInt("st", 0), x.optInt("hr", 0)});
+                }
+            }
+            if (pts.isEmpty()) return 0;
+            java.util.List<Integer> hrs = new java.util.ArrayList<>();
+            for (long[] p : pts) if (p[2] > 0) hrs.add((int) p[2]);
+            java.util.Collections.sort(hrs);
+            int med = hrs.isEmpty() ? 0 : hrs.get(hrs.size() / 2);
+            java.util.Collections.sort(pts, (a, b) -> Long.compare(a[0], b[0]));
+            int n = 0;
+            long last = -1000;
+            for (long[] p : pts) {
+                boolean ev = p[1] >= 8 || (med > 0 && p[2] >= med + 15);
+                if (!ev) continue;
+                if (p[0] - last > 20) n++;
+                last = p[0];
+            }
+            return n;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     private static final java.text.SimpleDateFormat DAY = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
     private static final java.text.SimpleDateFormat HM = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US);
 
@@ -154,8 +199,9 @@ public class Sdk {
                         for (Seg o : segs) if (o.start == g.start) return; // duplikat
                         segs.add(g);
                     }
-                    out.line(String.format(java.util.Locale.US, "Sen – kawałek %s → %s (%d min, zegarek: dzień %s)",
-                            s.getSleepDown().getClock(), s.getSleepUp().getClock(), g.all, s.getDate()));
+                    out.line(String.format(java.util.Locale.US, "Sen – kawałek %s → %s (%d min, gł. %d, pł. %d, pobudki %d, zegarek: dzień %s)",
+                            s.getSleepDown().getClock(), s.getSleepUp().getClock(), g.all, g.deep, g.light, g.wakes, s.getDate()));
+                    out.line("Sen – linia: " + (g.line == null ? "(brak)" : g.line));
                 } catch (Exception e) {
                     out.line("Sen (surowo): " + s);
                 }
@@ -270,6 +316,11 @@ public class Sdk {
                         j.put("jakosc", q);
                         j.put("linia", line.toString());
                         if (night.size() > 1) j.put("czesci", night.size());
+                        int moveWakes = wakesFromHistory(c, S, E);
+                        if (moveWakes > wakes) {
+                            j.put("pobudki", moveWakes);
+                            j.put("pobudkiRuch", moveWakes);
+                        }
                         HistStore.putSleep(c, day, j);
                         written.add(day);
                         nights++;
