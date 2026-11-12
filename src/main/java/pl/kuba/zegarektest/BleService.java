@@ -153,7 +153,20 @@ public class BleService extends Service {
     // ---------------- połączenie przez bibliotekę producenta ----------------
     /** true = jedno połączenie przez bibliotekę HBand (domyślnie). */
     public static boolean useSdk(Context c) {
-        return c.getSharedPreferences("ust", MODE_PRIVATE).getBoolean("sdk", true);
+        android.content.SharedPreferences u = c.getSharedPreferences("ust", MODE_PRIVATE);
+        return u.getBoolean("sdk", true) && System.currentTimeMillis() >= u.getLong("sdkPauzaDo", 0);
+    }
+
+    /** Chwilowa przerwa w trybie biblioteki po awarii: 15 min, 30 min, 1 h … maks. 6 h. */
+    static void pauseSdk(Context c, String why, boolean now) {
+        android.content.SharedPreferences u = c.getSharedPreferences("ust", MODE_PRIVATE);
+        long t = System.currentTimeMillis();
+        int n = t - u.getLong("sdkAwariaCzas", 0) > 24 * 3600 * 1000L ? 0 : u.getInt("sdkAwarie", 0);
+        long pause = Math.min(6 * 3600 * 1000L, 15 * 60 * 1000L << Math.min(n, 5));
+        android.content.SharedPreferences.Editor e = u.edit().putLong("sdkPauzaDo", t + pause).putInt("sdkAwarie", n + 1)
+                .putLong("sdkAwariaCzas", t).putString("sdkPowod", why == null ? "" : why);
+        if (now) e.commit(); else e.apply();
+        appendLog(c, "Chwilowo stare połączenie (" + why + ") – powrót do biblioteki za " + pause / 60000 + " min");
     }
 
     private boolean sdkLink = false;      // aktywne połączenie przez bibliotekę
@@ -264,7 +277,7 @@ public class BleService extends Service {
     private final Runnable reconnect = () -> connect();
 
     private void fallbackOwn() {
-        getSharedPreferences("ust", MODE_PRIVATE).edit().putBoolean("sdk", false).apply();
+        pauseSdk(this, "brak kanału danych", false);
         sdkLink = false;
         Sdk.ready = false;
         Dials.reset();
@@ -444,6 +457,9 @@ public class BleService extends Service {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        // wersja 6.2: dawniej awaria wyłączała bibliotekę na stałe – przywróć jedno połączenie
+        android.content.SharedPreferences mig = getSharedPreferences("ust", MODE_PRIVATE);
+        if (!mig.getBoolean("sdkMig62", false)) mig.edit().putBoolean("sdk", true).putLong("sdkPauzaDo", 0).putBoolean("sdkMig62", true).apply();
         final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((th, ex) -> {
             try {
@@ -452,8 +468,8 @@ public class BleService extends Service {
                 String tr = sw.toString();
                 appendLog(this, "AWARIA: " + tr);
                 if (sdkLink && (tr.contains("veepoo") || tr.contains("inuker") || tr.contains("jieli"))) {
-                    getSharedPreferences("ust", MODE_PRIVATE).edit().putBoolean("sdk", false).commit();
-                    appendLog(this, "Awaria w bibliotece producenta – następnym razem zwykłe połączenie");
+                    String first = tr.split("\n")[0];
+                    pauseSdk(this, "awaria: " + (first.length() > 80 ? first.substring(0, 80) : first), true);
                 }
             } catch (Throwable ignored) { }
             if (prev != null) prev.uncaughtException(th, ex);
@@ -1157,6 +1173,12 @@ public class BleService extends Service {
     private final Runnable poll = new Runnable() {
         @Override
         public void run() {
+            if (!sdkLink && wantConnected && useSdk(BleService.this)) {
+                log("Koniec przerwy – wracam do jednego połączenia przez bibliotekę");
+                closeGatt();
+                main.postDelayed(BleService.this::connect, 2000);
+                return;
+            }
             if (!linked()) return;
             sendVeepoo(new byte[]{(byte) 0xD8, 0});
             if (sdkLink) { autoSleep(); Weather.maybeSend(BleService.this, BleService.this::log, false); }

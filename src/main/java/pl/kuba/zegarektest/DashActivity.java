@@ -514,6 +514,13 @@ public class DashActivity extends Activity implements BleService.Listener {
     }
 
     private void modeLabel() {
+        android.content.SharedPreferences u = getSharedPreferences("ust", MODE_PRIVATE);
+        long until = u.getLong("sdkPauzaDo", 0);
+        if (u.getBoolean("sdk", true) && System.currentTimeMillis() < until) {
+            sub(tvMode, "⚠️ Chwilowo stare połączenie (" + u.getString("sdkPowod", "awaria") + "), sam wróci o "
+                    + new java.text.SimpleDateFormat("HH:mm", Locale.US).format(new java.util.Date(until)) + " · dotknij, by wrócić teraz");
+            return;
+        }
         sub(tvMode, BleService.useSdk(this) ? "Jedno połączenie (zalecane) ✓ · dotknij, by zmienić" : "Stare połączenie · dotknij, by włączyć zalecane");
     }
 
@@ -785,7 +792,9 @@ public class DashActivity extends Activity implements BleService.Listener {
                 v -> { stopBle(); tvState.postDelayed(this::startBle, 1500); });
         tvBatOpt = setRow(gC, "🔋", "#EF6C00", "Bateria bez limitu", "", v -> askBattery());
         tvMode = setRow(gC, "⚙️", "#334155", "Tryb połączenia", "", v -> {
-            getSharedPreferences("ust", MODE_PRIVATE).edit().putBoolean("sdk", !BleService.useSdk(this)).apply();
+            android.content.SharedPreferences u = getSharedPreferences("ust", MODE_PRIVATE);
+            boolean paused = u.getBoolean("sdk", true) && !BleService.useSdk(this);
+            u.edit().putBoolean("sdk", paused || !BleService.useSdk(this)).putLong("sdkPauzaDo", 0).putInt("sdkAwarie", 0).apply();
             modeLabel();
             stopBle();
             tvState.postDelayed(this::startBle, 2500);
