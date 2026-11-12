@@ -335,23 +335,44 @@ public class BleService extends Service {
     }
 
     /** Raz dziennie (od 6:00) pobiera sen z zegarka. */
+    private volatile boolean sleepBusy = false;
+
+    /** Wywoływane też z ekranu głównego i po odblokowaniu telefonu. */
+    public void autoSleepNow() { main.post(this::autoSleep); }
+
+    /** Pobiera sen: od 3:30, potem co godzinę do 12:00 i co 3 h do 15:00 (noc się dopełnia). */
     private void autoSleep() {
-        if (!Sdk.ready || busySdk) return;
+        if (!Sdk.ready || busySdk || sleepBusy) return;
         String t = today();
         android.content.SharedPreferences sp = getSharedPreferences("ust", MODE_PRIVATE);
-        int hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
-        if (hour < 6) return;
-        // pierwszy raz po 6:00, potem jeszcze co 3 h do 14:00 (gdy wstajesz później, noc się dopełni)
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        int hm = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE);
+        if (hm < 3 * 60 + 30) return;
         boolean doneToday = t.equals(sp.getString("senDzien", ""));
-        if (doneToday && (hour >= 15 || System.currentTimeMillis() - sp.getLong("senCzas", 0) < 3 * 3600 * 1000L)) return;
+        long since = System.currentTimeMillis() - sp.getLong("senCzas", 0);
+        if (doneToday) {
+            if (hm >= 15 * 60) return;
+            long gap = hm < 12 * 60 ? 3600 * 1000L : 3 * 3600 * 1000L;
+            if (since < gap) return;
+        }
         log("Automatycznie: pobieram sen");
+        sleepBusy = true;
+        main.postDelayed(() -> sleepBusy = false, 90000);
         try {
             Sdk.readSleep(this, this::log, () -> {
+                sleepBusy = false;
                 sp.edit().putString("senDzien", t).putLong("senCzas", System.currentTimeMillis()).apply();
                 notifyUi();
             });
-        } catch (Throwable e) { log("Sen: " + e); }
+        } catch (Throwable e) { sleepBusy = false; log("Sen: " + e); }
     }
+
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            main.postDelayed(BleService.this::autoSleep, 3000);
+        }
+    };
 
     // ---------------- przypomnienia (woda, leki, inne) ----------------
     private final Runnable remindTick = new Runnable() {
@@ -451,6 +472,11 @@ public class BleService extends Service {
         try {
             registerReceiver(ringerReceiver, new IntentFilter(android.media.AudioManager.RINGER_MODE_CHANGED_ACTION));
         } catch (Exception ignored) { }
+        try {
+            IntentFilter sf = new IntentFilter(Intent.ACTION_USER_PRESENT);
+            sf.addAction(Intent.ACTION_SCREEN_ON);
+            registerReceiver(screenReceiver, sf);
+        } catch (Exception ignored) { }
         IntentFilter f = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(btReceiver, f, Context.RECEIVER_EXPORTED);
@@ -501,6 +527,7 @@ public class BleService extends Service {
         try { unregisterReceiver(btReceiver); } catch (Exception ignored) { }
         try { unregisterReceiver(phoneReceiver); } catch (Exception ignored) { }
         try { unregisterReceiver(ringerReceiver); } catch (Exception ignored) { }
+        try { unregisterReceiver(screenReceiver); } catch (Exception ignored) { }
         closeGatt();
         main.removeCallbacks(remindTick);
         if (statusReg) { try { Sdk.m().unregisterConnectStatusListener(mac, statusL); } catch (Throwable ignored) { } statusReg = false; }

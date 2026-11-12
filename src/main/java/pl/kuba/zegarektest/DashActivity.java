@@ -1218,6 +1218,8 @@ public class DashActivity extends Activity implements BleService.Listener {
         BleService.listener = this;
         refresh();
         notifStatus();
+        BleService b = BleService.instance;
+        if (b != null) b.autoSleepNow();
     }
 
     @Override
